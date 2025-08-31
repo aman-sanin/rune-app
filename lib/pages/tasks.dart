@@ -17,279 +17,235 @@ class _TasksScreenState extends State<TasksScreen> {
     super.initState();
     tasksBox = Hive.box('tasksBox');
 
-    // Load tasks from Hive
-    tasks = (tasksBox.get('all_tasks', defaultValue: []) as List)
-        .map((e) => Map<String, dynamic>.from(e as Map))
-        .toList();
+    // ✨ FIX: This section now deeply converts both tasks and their nested subtasks.
+    final rawTasks = tasksBox.get('all_tasks', defaultValue: []) as List;
+    tasks = rawTasks.map((task) {
+      // 1. Convert the parent task
+      final taskMap = Map<String, dynamic>.from(task as Map);
+
+      // 2. If subtasks exist, convert them too
+      if (taskMap['subtasks'] != null) {
+        final rawSubtasks = taskMap['subtasks'] as List;
+        taskMap['subtasks'] = rawSubtasks.map((subtask) {
+          return Map<String, dynamic>.from(subtask as Map);
+        }).toList();
+      }
+      return taskMap;
+    }).toList();
   }
 
-  void _showAddTaskDialog({
+  // The rest of your code from here is correct and does not need changes.
+  void _showAddOrEditTaskDialog({
     Map<String, dynamic>? parentTask,
-    String? linkedEventId,
+    Map<String, dynamic>? taskToEdit,
   }) {
-    final _titleController = TextEditingController();
-    bool linkToEvent = linkedEventId != null;
+    final isEditing = taskToEdit != null;
+    final titleController = TextEditingController(
+      text: isEditing ? taskToEdit['title'] : '',
+    );
+
+    String dialogTitle;
+    if (isEditing) {
+      dialogTitle = "Edit Task";
+    } else if (parentTask != null) {
+      dialogTitle = "Add Subtask";
+    } else {
+      dialogTitle = "Add Task";
+    }
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(parentTask == null ? "Add Task" : "Add Subtask"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _titleController,
-              decoration: const InputDecoration(labelText: 'Task Title'),
+      builder: (context) {
+        return AlertDialog(
+          title: Text(dialogTitle),
+          content: TextField(
+            controller: titleController,
+            decoration: const InputDecoration(labelText: 'Task Title'),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
             ),
-            if (linkedEventId == null)
-              StatefulBuilder(
-                builder: (context, setStateDialog) => CheckboxListTile(
-                  value: linkToEvent,
-                  onChanged: (val) =>
-                      setStateDialog(() => linkToEvent = val ?? false),
-                  title: const Text("Link to an Event"),
-                ),
-              ),
+            ElevatedButton(
+              onPressed: () {
+                if (titleController.text.isNotEmpty) {
+                  setState(() {
+                    if (isEditing) {
+                      taskToEdit['title'] = titleController.text;
+                    } else if (parentTask != null) {
+                      parentTask['subtasks'].add({
+                        "title": titleController.text,
+                        "done": false,
+                      });
+                    } else {
+                      tasks.add({
+                        "title": titleController.text,
+                        "done": false,
+                        "subtasks": [],
+                        "linkedEvent": null,
+                      });
+                    }
+                    tasksBox.put('all_tasks', tasks);
+                  });
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text("Save"),
+            ),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (_titleController.text.isEmpty) return;
-
-              final currentTasks =
-                  (tasksBox.get('all_tasks', defaultValue: []) as List)
-                      .map((e) => Map<String, dynamic>.from(e as Map))
-                      .toList();
-
-              if (parentTask == null) {
-                currentTasks.add({
-                  "title": _titleController.text,
-                  "done": false,
-                  "subtasks": [],
-                  "linkedEventId": linkToEvent ? linkedEventId : null,
-                });
-              } else {
-                parentTask['subtasks'].add({
-                  "title": _titleController.text,
-                  "done": false,
-                });
-              }
-
-              tasksBox.put('all_tasks', currentTasks);
-              Navigator.pop(context);
-            },
-            child: const Text("Add"),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   void _deleteTask(Map<String, dynamic> task) {
-    final currentTasks = (tasksBox.get('all_tasks', defaultValue: []) as List)
-        .map((e) => Map<String, dynamic>.from(e as Map))
-        .toList();
-
-    currentTasks.remove(task);
-    tasksBox.put('all_tasks', currentTasks);
+    setState(() {
+      tasks.remove(task);
+      tasksBox.put('all_tasks', tasks);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder(
-      valueListenable: tasksBox.listenable(),
-      builder: (context, Box box, _) {
-        tasks = (box.get('all_tasks', defaultValue: []) as List)
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList();
-
-        final linkedTasks = tasks
-            .where((t) => t['linkedEventId'] != null)
-            .toList();
-        final standaloneTasks = tasks
-            .where((t) => t['linkedEventId'] == null)
-            .toList();
-
-        Widget buildTaskList(List<Map<String, dynamic>> taskList) {
-          return ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: taskList.length,
-            itemBuilder: (context, index) {
-              final task = taskList[index];
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ListTile(
-                    title: Text(
-                      task['title'],
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        decoration: (task['done'] ?? false)
-                            ? TextDecoration.lineThrough
-                            : TextDecoration.none,
-                      ),
-                    ),
-                    leading: Checkbox(
-                      value: task['done'],
-                      onChanged: (val) {
-                        final allTasks =
-                            (tasksBox.get('all_tasks', defaultValue: [])
-                                    as List)
-                                .map((e) => Map<String, dynamic>.from(e as Map))
-                                .toList();
-                        final taskIndex = allTasks.indexWhere((t) => t == task);
-                        setState(() {
-                          allTasks[taskIndex]['done'] = val;
-                          // Check/uncheck subtasks
-                          if (allTasks[taskIndex]['subtasks'] != null) {
-                            for (var st in allTasks[taskIndex]['subtasks']) {
-                              st['done'] = val;
-                            }
-                          }
-                          tasksBox.put('all_tasks', allTasks);
-                        });
-                      },
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.add),
-                          onPressed: () => _showAddTaskDialog(parentTask: task),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete),
-                          onPressed: () => _deleteTask(task),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Subtasks
-                  if (task['subtasks'] != null && task['subtasks'].isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 32.0),
-                      child: Column(
-                        children: List.generate(task['subtasks'].length, (
-                          subIndex,
-                        ) {
-                          final subtask = task['subtasks'][subIndex];
-                          return ListTile(
-                            title: Text(
-                              subtask['title'],
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontStyle: FontStyle.italic,
-                                color: Colors.grey,
-                                decoration: (subtask['done'] ?? false)
-                                    ? TextDecoration.lineThrough
-                                    : TextDecoration.none,
+    return Scaffold(
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: tasks.isEmpty
+            ? const Center(child: Text("No tasks yet"))
+            : ListView.builder(
+                itemCount: tasks.length,
+                itemBuilder: (context, index) {
+                  final task = tasks[index];
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      GestureDetector(
+                        onTap: () {},
+                        onDoubleTap: () =>
+                            _showAddOrEditTaskDialog(taskToEdit: task),
+                        behavior: HitTestBehavior.opaque,
+                        child: ListTile(
+                          title: Text(
+                            task['title'],
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              decoration: (task['done'] ?? false)
+                                  ? TextDecoration.lineThrough
+                                  : TextDecoration.none,
+                            ),
+                          ),
+                          leading: Checkbox(
+                            value: task['done'],
+                            onChanged: (val) {
+                              setState(() {
+                                task['done'] = val;
+                                if (task['subtasks'] != null) {
+                                  for (var st in task['subtasks']) {
+                                    st['done'] = val;
+                                  }
+                                }
+                                tasksBox.put('all_tasks', tasks);
+                              });
+                            },
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.add),
+                                onPressed: () =>
+                                    _showAddOrEditTaskDialog(parentTask: task),
+                                tooltip: "Add Subtask",
                               ),
-                            ),
-                            leading: Checkbox(
-                              value: subtask['done'],
-                              onChanged: (val) {
-                                final allTasks =
-                                    (tasksBox.get('all_tasks', defaultValue: [])
-                                            as List)
-                                        .map(
-                                          (e) => Map<String, dynamic>.from(
-                                            e as Map,
-                                          ),
-                                        )
-                                        .toList();
-                                final parentIndex = allTasks.indexWhere(
-                                  (t) => t == task,
-                                );
-                                setState(() {
-                                  allTasks[parentIndex]['subtasks'][subIndex]['done'] =
-                                      val;
-                                  tasksBox.put('all_tasks', allTasks);
-                                });
-                              },
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete),
-                              onPressed: () {
-                                final allTasks =
-                                    (tasksBox.get('all_tasks', defaultValue: [])
-                                            as List)
-                                        .map(
-                                          (e) => Map<String, dynamic>.from(
-                                            e as Map,
-                                          ),
-                                        )
-                                        .toList();
-                                final parentIndex = allTasks.indexWhere(
-                                  (t) => t == task,
-                                );
-                                setState(() {
-                                  allTasks[parentIndex]['subtasks'].removeAt(
-                                    subIndex,
-                                  );
-                                  tasksBox.put('all_tasks', allTasks);
-                                });
-                              },
-                            ),
-                          );
-                        }),
+                              IconButton(
+                                icon: const Icon(Icons.delete),
+                                onPressed: () => _deleteTask(task),
+                                tooltip: "Delete Task",
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
-                  const Divider(),
-                ],
-              );
-            },
-          );
-        }
-
-        return Scaffold(
-          body: Padding(
-            padding: const EdgeInsets.all(16),
-            child: tasks.isEmpty
-                ? const Center(child: Text("No tasks yet"))
-                : SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (linkedTasks.isNotEmpty) ...[
-                          const Text(
-                            "Linked Tasks",
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
+                      if (task['subtasks'] != null &&
+                          task['subtasks'].isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 32.0),
+                          child: Column(
+                            children: List.generate(task['subtasks'].length, (
+                              subIndex,
+                            ) {
+                              final subtask = task['subtasks'][subIndex];
+                              return GestureDetector(
+                                onTap: () {},
+                                onDoubleTap: () => _showAddOrEditTaskDialog(
+                                  taskToEdit: subtask,
+                                ),
+                                behavior: HitTestBehavior.opaque,
+                                child: ListTile(
+                                  title: Text(
+                                    subtask['title'],
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontStyle: FontStyle.italic,
+                                      color: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall?.color,
+                                      decoration: (subtask['done'] ?? false)
+                                          ? TextDecoration.lineThrough
+                                          : TextDecoration.none,
+                                    ),
+                                  ),
+                                  leading: Checkbox(
+                                    value: subtask['done'],
+                                    onChanged: (val) {
+                                      setState(() {
+                                        subtask['done'] = val;
+                                        if (task['subtasks'].every(
+                                          (st) => st['done'] == true,
+                                        )) {
+                                          task['done'] = true;
+                                        } else {
+                                          task['done'] = false;
+                                        }
+                                        tasksBox.put('all_tasks', tasks);
+                                      });
+                                    },
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.delete),
+                                        onPressed: () {
+                                          setState(() {
+                                            task['subtasks'].removeAt(subIndex);
+                                            tasksBox.put('all_tasks', tasks);
+                                          });
+                                        },
+                                        tooltip: "Delete Subtask",
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }),
                           ),
-                          buildTaskList(linkedTasks),
-                        ],
-                        if (standaloneTasks.isNotEmpty) ...[
-                          const SizedBox(height: 16),
-                          const Text(
-                            "Standalone Tasks",
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          buildTaskList(standaloneTasks),
-                        ],
-                      ],
-                    ),
-                  ),
-          ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _showAddTaskDialog(),
-            icon: const Icon(Icons.add),
-            label: const Text("Add Task"),
-            backgroundColor: Colors.deepPurple,
-          ),
-        );
-      },
+                        ),
+                      const Divider(),
+                    ],
+                  );
+                },
+              ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showAddOrEditTaskDialog(),
+        icon: const Icon(Icons.add),
+        label: const Text("Add Task"),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+      ),
     );
   }
 }
