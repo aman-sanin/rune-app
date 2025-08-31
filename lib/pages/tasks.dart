@@ -90,6 +90,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Parent Task
                       ListTile(
                         title: Text(
                           task['title'],
@@ -106,16 +107,24 @@ class _TasksScreenState extends State<TasksScreen> {
                           onChanged: (val) {
                             setState(() {
                               task['done'] = val;
+
+                              // Check/uncheck all subtasks
+                              if (task['subtasks'] != null) {
+                                for (var st in task['subtasks']) {
+                                  st['done'] = val;
+                                }
+                              }
+
                               tasksBox.put('all_tasks', tasks);
                             });
                           },
                           fillColor: MaterialStateProperty.resolveWith<Color?>((
-                            Set<MaterialState> states,
+                            states,
                           ) {
                             if (states.contains(MaterialState.selected)) {
                               return Theme.of(context).colorScheme.primary;
                             }
-                            return null; // uses default border color in light mode
+                            return null;
                           }),
                           checkColor: Theme.of(context).colorScheme.onPrimary,
                         ),
@@ -136,6 +145,7 @@ class _TasksScreenState extends State<TasksScreen> {
                           ],
                         ),
                       ),
+
                       // Subtasks
                       if (task['subtasks'] != null &&
                           task['subtasks'].isNotEmpty)
@@ -159,26 +169,35 @@ class _TasksScreenState extends State<TasksScreen> {
                                   ),
                                 ),
                                 leading: Checkbox(
-                                  value: task['done'],
+                                  value: subtask['done'],
                                   onChanged: (val) {
                                     setState(() {
-                                      task['done'] = val;
+                                      subtask['done'] = val;
+
+                                      // Auto-check parent task if all subtasks done
+                                      if (task['subtasks'].every(
+                                        (st) => st['done'] == true,
+                                      )) {
+                                        task['done'] = true;
+                                      } else {
+                                        task['done'] = false;
+                                      }
+
                                       tasksBox.put('all_tasks', tasks);
                                     });
                                   },
-                                  fillColor:
-                                      MaterialStateProperty.resolveWith<
-                                        Color?
-                                      >((Set<MaterialState> states) {
-                                        if (states.contains(
-                                          MaterialState.selected,
-                                        )) {
-                                          return Theme.of(
-                                            context,
-                                          ).colorScheme.primary;
-                                        }
-                                        return null; // uses default border color in light mode
-                                      }),
+                                  fillColor: MaterialStateProperty.resolveWith((
+                                    states,
+                                  ) {
+                                    if (states.contains(
+                                      MaterialState.selected,
+                                    )) {
+                                      return Theme.of(
+                                        context,
+                                      ).colorScheme.primary;
+                                    }
+                                    return null;
+                                  }),
                                   checkColor: Theme.of(
                                     context,
                                   ).colorScheme.onPrimary,
@@ -188,6 +207,19 @@ class _TasksScreenState extends State<TasksScreen> {
                                   onPressed: () {
                                     setState(() {
                                       task['subtasks'].removeAt(subIndex);
+
+                                      // Update parent done status after removal
+                                      if (task['subtasks'].isEmpty ||
+                                          task['subtasks'].every(
+                                            (st) => st['done'] == true,
+                                          )) {
+                                        task['done'] = task['subtasks'].isEmpty
+                                            ? task['done']
+                                            : true;
+                                      } else {
+                                        task['done'] = false;
+                                      }
+
                                       tasksBox.put('all_tasks', tasks);
                                     });
                                   },

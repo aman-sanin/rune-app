@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'dart:io';
+import 'dart:convert';
+import 'package:file_picker/file_picker.dart';
+
 import 'events.dart';
 import 'countdown.dart';
 
@@ -56,6 +60,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void _showAddEventDialog() {
     final _titleController = TextEditingController();
     final _descController = TextEditingController();
+    bool countdownEnabled = false;
     DateTime selectedDate = _selectedDay ?? _focusedDay;
 
     showModalBottomSheet(
@@ -78,15 +83,50 @@ class _CalendarScreenState extends State<CalendarScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(
-                    controller: _titleController,
-                    decoration: const InputDecoration(labelText: 'Event Title'),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _titleController,
+                          decoration: const InputDecoration(
+                            labelText: 'Event Title',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        tooltip: "Import CSV",
+                        icon: Row(
+                          children: const [
+                            Icon(Icons.add, size: 20),
+                            SizedBox(width: 2),
+                            Text(
+                              "CSV",
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                        onPressed: () async {
+                          final result = await FilePicker.platform.pickFiles(
+                            type: FileType.custom,
+                            allowedExtensions: ['csv'],
+                          );
+                          if (result != null &&
+                              result.files.single.path != null) {
+                            final file = File(result.files.single.path!);
+                            final content = await file.readAsString();
+                            _importEventsFromCsv(content);
+                            Navigator.pop(context); // close sheet after import
+                          }
+                        },
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   TextField(
                     controller: _descController,
                     decoration: const InputDecoration(
-                      labelText: 'Event Description',
+                      labelText: 'Event Description (optional)',
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -115,6 +155,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       ),
                     ],
                   ),
+                  Row(
+                    children: [
+                      const Text("Enable Countdown"),
+                      Checkbox(
+                        value: countdownEnabled,
+                        onChanged: (val) => setModalState(
+                          () => countdownEnabled = val ?? false,
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () {
@@ -123,6 +174,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           "title": _titleController.text,
                           "description": _descController.text,
                           "date": selectedDate,
+                          "countdown": countdownEnabled,
                         };
                         setState(() {
                           _events.add(newEvent);
@@ -140,6 +192,77 @@ class _CalendarScreenState extends State<CalendarScreen> {
         );
       },
     );
+  }
+
+  void _importEventsFromCsv(String content) {
+    final lines = const LineSplitter().convert(content);
+    int added = 0;
+    int skipped = 0;
+
+    for (var line in lines) {
+      final parts = line.split(',');
+
+      // Check for minimum required fields: title and date.
+      if (parts.length < 2) {
+        skipped++;
+        continue;
+      }
+
+      final title = parts[0].trim();
+      if (title.isEmpty) {
+        skipped++;
+        continue; // Skip if title is empty
+      }
+
+      // Parse date in dd/mm/yyyy format.
+      DateTime? date;
+      final dateParts = parts[1].trim().split('/');
+      if (dateParts.length == 3) {
+        try {
+          final day = int.parse(dateParts[0]);
+          final month = int.parse(dateParts[1]);
+          final year = int.parse(dateParts[2]);
+          date = DateTime(year, month, day);
+        } catch (_) {
+          date = null;
+        }
+      }
+      if (date == null) {
+        skipped++;
+        continue; // Skip if date is invalid or couldn't be parsed
+      }
+
+      // Optional description (defaults to empty string).
+      final description = parts.length > 2 ? parts[2].trim() : '';
+
+      // Optional countdown (defaults to false).
+      final countdown =
+          parts.length > 3 && parts[3].trim().toLowerCase() == 'true';
+
+      final newEvent = {
+        "title": title,
+        "description": description,
+        "date": date,
+        "countdown": countdown,
+      };
+      _events.add(newEvent);
+      added++;
+    }
+
+    // Persist events.
+    eventsBox.put('all_events', _events);
+
+    // Show feedback.
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'CSV import complete: $added added, $skipped skipped due to errors.',
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+
+    setState(() {}); // Refresh the calendar
   }
 
   @override
@@ -252,7 +375,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const CountdownScreen()),
+                  MaterialPageRoute(builder: (_) => CountdownScreen()),
                 );
               },
               backgroundColor: Colors.deepPurple,
