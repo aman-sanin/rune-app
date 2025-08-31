@@ -53,6 +53,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
 class _RuneAppState extends State<RuneApp> {
   int _currentIndex = 0; // Track the current index of active tab
+  bool isDark = true;
 
   final _screens = const [CalendarScreen(), Center(child: Text('Tasks'))];
 
@@ -60,6 +61,21 @@ class _RuneAppState extends State<RuneApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       theme: ThemeData(
+        brightness: Brightness.light,
+        textTheme: GoogleFonts.orbitronTextTheme(ThemeData.light().textTheme),
+        colorScheme: const ColorScheme.light(
+          primary: Colors.deepPurple,
+          secondary: Colors.amber,
+          surface: Color(0xFFD4A373), // light surface
+        ),
+        scaffoldBackgroundColor: Color(0xFFE3CBAA),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          centerTitle: true,
+        ),
+      ),
+      darkTheme: ThemeData(
         brightness: Brightness.dark,
         textTheme: GoogleFonts.orbitronTextTheme(
           // Inter is clean, minimal
@@ -77,10 +93,25 @@ class _RuneAppState extends State<RuneApp> {
           centerTitle: true,
         ),
       ),
+      themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
 
       debugShowCheckedModeBanner: false,
       home: Scaffold(
-        appBar: AppBar(title: const Text('Rune'), centerTitle: true),
+        appBar: AppBar(
+          title: const Text('Rune'),
+          centerTitle: true,
+          actions: [
+            IconButton(
+              icon: Icon(isDark ? Icons.dark_mode : Icons.light_mode),
+              onPressed: () {
+                setState(() {
+                  isDark = !isDark;
+                });
+              },
+            ),
+          ],
+        ),
+
         body: _screens[_currentIndex],
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _currentIndex,
