@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'events.dart';
+import 'countdown.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -28,7 +30,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // Map dates to events for markers
   Map<DateTime, List<Map<String, dynamic>>> get _eventsMap {
     Map<DateTime, List<Map<String, dynamic>>> map = {};
     for (var event in _events) {
@@ -42,7 +43,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return map;
   }
 
-  // Events for selected day
   List<Map<String, dynamic>> get _selectedEvents {
     if (_selectedDay == null) return [];
     final key = DateTime(
@@ -127,7 +127,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         setState(() {
                           _events.add(newEvent);
                         });
-                        eventsBox.put('all_events', _events); // persist to Hive
+                        eventsBox.put('all_events', _events); // persist
                         Navigator.pop(context);
                       }
                     },
@@ -203,6 +203,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           date:
                               "${event['date'].day}/${event['date'].month}/${event['date'].year}",
                           description: event["description"],
+                          onTap: () async {
+                            final shouldDelete = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => EventDetailsScreen(
+                                  event: event,
+                                  eventsBox: eventsBox,
+                                ),
+                              ),
+                            );
+
+                            if (shouldDelete == true) {
+                              setState(() {
+                                _events.remove(event);
+                                eventsBox.put('all_events', _events);
+                              });
+                            }
+                          },
                         );
                       },
                     ),
@@ -210,16 +228,43 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddEventDialog,
-        icon: const Icon(Icons.add),
-        label: const Text("Add Event"),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          side: const BorderSide(color: Colors.amber, width: 1.5),
-          borderRadius: BorderRadius.circular(12),
-        ),
+      floatingActionButton: Stack(
+        children: [
+          Positioned(
+            bottom: 16,
+            right: 16,
+            child: FloatingActionButton.extended(
+              onPressed: _showAddEventDialog,
+              icon: const Icon(Icons.add),
+              label: const Text("Add Event"),
+              backgroundColor: Colors.deepPurple,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                side: const BorderSide(color: Colors.amber, width: 1.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 16,
+            left: 16,
+            child: FloatingActionButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CountdownScreen()),
+                );
+              },
+              backgroundColor: Colors.deepPurple,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              mini: true,
+              elevation: 4,
+              child: const Icon(Icons.hourglass_bottom, size: 20),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -229,12 +274,14 @@ class EventTile extends StatelessWidget {
   final String title;
   final String date;
   final String description;
+  final VoidCallback? onTap;
 
   const EventTile({
     super.key,
     required this.title,
     required this.date,
     required this.description,
+    this.onTap,
   });
 
   @override
@@ -256,7 +303,7 @@ class EventTile extends StatelessWidget {
           Icons.arrow_forward_ios,
           color: Theme.of(context).colorScheme.primary,
         ),
-        onTap: () {},
+        onTap: onTap,
       ),
     );
   }

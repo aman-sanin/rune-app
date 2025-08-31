@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'pages/calendar.dart';
+import 'pages/tasks.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 Future<void> main() async {
@@ -8,6 +9,7 @@ Future<void> main() async {
   await Hive.initFlutter();
 
   await Hive.openBox('eventsBox');
+  await Hive.openBox('tasksBox');
   runApp(const RuneApp());
 }
 
@@ -24,7 +26,7 @@ class _RuneAppState extends State<RuneApp> {
 
   final _screens = const [
     CalendarScreen(), // now contains both calendar & events list
-    Center(child: Text('Tasks')), // your Tasks tab
+    TasksScreen(), // your Tasks tab
   ];
 
   @override
