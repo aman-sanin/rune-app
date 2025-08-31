@@ -21,9 +21,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     super.initState();
     eventsBox = Hive.box('eventsBox');
 
-    // Load events from Hive
+    // Load events from Hive safely
+    final storedEvents = eventsBox.get('all_events', defaultValue: []);
     _events = List<Map<String, dynamic>>.from(
-      eventsBox.get('all_events', defaultValue: []),
+      (storedEvents as List).map((e) => Map<String, dynamic>.from(e)),
     );
   }
 
