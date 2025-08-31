@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:table_calendar/table_calendar.dart';
-import 'pages/events.dart';
+import 'pages/calendar.dart';
 
 void main() {
   runApp(const RuneApp());
@@ -14,52 +13,13 @@ class RuneApp extends StatefulWidget {
   State<RuneApp> createState() => _RuneAppState();
 }
 
-class CalendarScreen extends StatefulWidget {
-  const CalendarScreen({super.key});
-
-  @override
-  State<CalendarScreen> createState() => _CalendarScreenState();
-}
-
-class _CalendarScreenState extends State<CalendarScreen> {
-  DateTime _focusedDay = DateTime.now();
-  DateTime? _selectedDay;
-
-  @override
-  Widget build(BuildContext context) {
-    return TableCalendar(
-      focusedDay: _focusedDay,
-      firstDay: DateTime.utc(2020, 1, 1),
-      lastDay: DateTime.utc(2030, 12, 31),
-      selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-      onDaySelected: (selectedDay, focusedDay) {
-        setState(() {
-          _selectedDay = selectedDay;
-          _focusedDay = focusedDay; // update the focused day
-        });
-      },
-      calendarStyle: const CalendarStyle(
-        todayDecoration: BoxDecoration(
-          color: Color(0xFF4FC3F7),
-          shape: BoxShape.circle,
-        ),
-        selectedDecoration: BoxDecoration(
-          color: Colors.orange,
-          shape: BoxShape.circle,
-        ),
-      ),
-    );
-  }
-}
-
 class _RuneAppState extends State<RuneApp> {
   int _currentIndex = 0; // Track the current index of active tab
   bool isDark = true;
 
   final _screens = const [
-    CalendarScreen(),
-    EventsPage(),
-    Center(child: Text('Tasks')),
+    CalendarScreen(), // now contains both calendar & events list
+    Center(child: Text('Tasks')), // your Tasks tab
   ];
 
   @override
