@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -12,7 +13,46 @@ class _CalendarScreenState extends State<CalendarScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
 
-  void _showAddEventDialog(BuildContext context) {
+  late final Box eventsBox;
+  List<Map<String, dynamic>> _events = [];
+
+  @override
+  void initState() {
+    super.initState();
+    eventsBox = Hive.box('eventsBox');
+
+    // Load events from Hive
+    _events = List<Map<String, dynamic>>.from(
+      eventsBox.get('all_events', defaultValue: []),
+    );
+  }
+
+  // Map dates to events for markers
+  Map<DateTime, List<Map<String, dynamic>>> get _eventsMap {
+    Map<DateTime, List<Map<String, dynamic>>> map = {};
+    for (var event in _events) {
+      final date = DateTime(
+        event['date'].year,
+        event['date'].month,
+        event['date'].day,
+      );
+      map.putIfAbsent(date, () => []).add(event);
+    }
+    return map;
+  }
+
+  // Events for selected day
+  List<Map<String, dynamic>> get _selectedEvents {
+    if (_selectedDay == null) return [];
+    final key = DateTime(
+      _selectedDay!.year,
+      _selectedDay!.month,
+      _selectedDay!.day,
+    );
+    return _eventsMap[key] ?? [];
+  }
+
+  void _showAddEventDialog() {
     final _titleController = TextEditingController();
     final _descController = TextEditingController();
     DateTime selectedDate = _selectedDay ?? _focusedDay;
@@ -27,7 +67,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            // use a local setState for the modal
             return Padding(
               padding: EdgeInsets.only(
                 left: 16,
@@ -62,13 +101,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             lastDate: DateTime(2030),
                           );
                           if (picked != null) {
-                            setModalState(() {
-                              selectedDate = picked; // update modal date
-                            });
+                            setModalState(() => selectedDate = picked);
                             setState(() {
-                              _selectedDay =
-                                  picked; // update main calendar selected day
-                              _focusedDay = picked; // update calendar focus
+                              _selectedDay = picked;
+                              _focusedDay = picked;
                             });
                           }
                         },
@@ -82,13 +118,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   ElevatedButton(
                     onPressed: () {
                       if (_titleController.text.isNotEmpty) {
+                        final newEvent = {
+                          "title": _titleController.text,
+                          "description": _descController.text,
+                          "date": selectedDate,
+                        };
                         setState(() {
-                          _events.add({
-                            "title": _titleController.text,
-                            "date": selectedDate,
-                            "description": _descController.text,
-                          });
+                          _events.add(newEvent);
                         });
+                        eventsBox.put('all_events', _events); // persist to Hive
                         Navigator.pop(context);
                       }
                     },
@@ -103,59 +141,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  final List<Map<String, dynamic>> _events = [
-    {
-      "title": "Hackathon Night",
-      "date": DateTime(2025, 9, 15),
-      "description": "Main Lab",
-    },
-    {
-      "title": "Cyber Talk",
-      "date": DateTime(2025, 9, 20),
-      "description": "Auditorium",
-    },
-    {
-      "title": "Game Dev Meetup",
-      "date": DateTime(2025, 9, 25),
-      "description": "Room 404",
-    },
-  ];
-
-  // Map dates to events for markers
-  Map<DateTime, List<Map<String, dynamic>>> get _eventsMap {
-    Map<DateTime, List<Map<String, dynamic>>> map = {};
-    for (var event in _events) {
-      final date = DateTime(
-        event["date"].year,
-        event["date"].month,
-        event["date"].day,
-      );
-      if (map[date] == null) {
-        map[date] = [event];
-      } else {
-        map[date]!.add(event);
-      }
-    }
-    return map;
-  }
-
-  // Events for selected day
-  List<Map<String, dynamic>> get _selectedEvents {
-    if (_selectedDay == null) return [];
-    final key = DateTime(
-      _selectedDay!.year,
-      _selectedDay!.month,
-      _selectedDay!.day,
-    );
-    return _eventsMap[key] ?? [];
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Calendar + events list
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             TableCalendar(
@@ -219,18 +209,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ],
         ),
       ),
-
-      // Add Event button
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          _showAddEventDialog(context);
-        },
+        onPressed: _showAddEventDialog,
         icon: const Icon(Icons.add),
-        label: const Text('Add Event'),
+        label: const Text("Add Event"),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         shape: RoundedRectangleBorder(
-          side: BorderSide(color: Colors.amber, width: 1.5),
+          side: const BorderSide(color: Colors.amber, width: 1.5),
           borderRadius: BorderRadius.circular(12),
         ),
       ),
@@ -238,7 +224,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 }
 
-// EventTile remains the same
 class EventTile extends StatelessWidget {
   final String title;
   final String date;
@@ -270,9 +255,7 @@ class EventTile extends StatelessWidget {
           Icons.arrow_forward_ios,
           color: Theme.of(context).colorScheme.primary,
         ),
-        onTap: () {
-          // Navigate to event details page
-        },
+        onTap: () {},
       ),
     );
   }
