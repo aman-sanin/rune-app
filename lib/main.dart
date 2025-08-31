@@ -36,7 +36,7 @@ class _RuneAppState extends State<RuneApp> {
         brightness: Brightness.light,
         textTheme: GoogleFonts.orbitronTextTheme(ThemeData.light().textTheme),
         colorScheme: const ColorScheme.light(
-          primary: Colors.white,
+          primary: Color.fromARGB(255, 38, 64, 189),
           secondary: Colors.amber,
           surface: Color(0xFFD4A373), // light surface
         ),

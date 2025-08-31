@@ -162,7 +162,9 @@ class _TasksScreenState extends State<TasksScreen> {
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontStyle: FontStyle.italic,
-                                    color: Colors.grey,
+                                    color: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall?.color,
                                     decoration: (subtask['done'] ?? false)
                                         ? TextDecoration.lineThrough
                                         : TextDecoration.none,
@@ -238,7 +240,7 @@ class _TasksScreenState extends State<TasksScreen> {
         onPressed: () => _showAddTaskDialog(),
         icon: const Icon(Icons.add),
         label: const Text("Add Task"),
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: Theme.of(context).colorScheme.primary,
       ),
     );
   }
