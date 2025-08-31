@@ -15,7 +15,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void _showAddEventDialog(BuildContext context) {
     final _titleController = TextEditingController();
     final _descController = TextEditingController();
-    DateTime selectedDate = _focusedDay;
+    DateTime selectedDate = _selectedDay ?? _focusedDay;
 
     showModalBottomSheet(
       context: context,
@@ -25,69 +25,79 @@ class _CalendarScreenState extends State<CalendarScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
       builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 16,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _titleController,
-                decoration: const InputDecoration(labelText: 'Event Title'),
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            // use a local setState for the modal
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 16,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
               ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _descController,
-                decoration: const InputDecoration(
-                  labelText: 'Event Description',
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text("Date: "),
-                  TextButton(
-                    onPressed: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: selectedDate,
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime(2030),
-                      );
-                      if (picked != null) {
+                  TextField(
+                    controller: _titleController,
+                    decoration: const InputDecoration(labelText: 'Event Title'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _descController,
+                    decoration: const InputDecoration(
+                      labelText: 'Event Description',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Text("Date: "),
+                      TextButton(
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: selectedDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2030),
+                          );
+                          if (picked != null) {
+                            setModalState(() {
+                              selectedDate = picked; // update modal date
+                            });
+                            setState(() {
+                              _selectedDay =
+                                  picked; // update main calendar selected day
+                              _focusedDay = picked; // update calendar focus
+                            });
+                          }
+                        },
+                        child: Text(
+                          "${selectedDate.day}/${selectedDate.month}/${selectedDate.year}",
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      if (_titleController.text.isNotEmpty) {
                         setState(() {
-                          selectedDate = picked;
+                          _events.add({
+                            "title": _titleController.text,
+                            "date": selectedDate,
+                            "description": _descController.text,
+                          });
                         });
+                        Navigator.pop(context);
                       }
                     },
-                    child: Text(
-                      "${selectedDate.day}/${selectedDate.month}/${selectedDate.year}",
-                    ),
+                    child: const Text("Add Event"),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  if (_titleController.text.isNotEmpty) {
-                    setState(() {
-                      _events.add({
-                        "title": _titleController.text,
-                        "date": selectedDate,
-                        "description": _descController.text,
-                      });
-                    });
-                    Navigator.pop(context);
-                  }
-                },
-                child: const Text("Add Event"),
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
