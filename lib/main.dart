@@ -69,11 +69,32 @@ class _RuneAppState extends State<RuneApp> {
           secondary: Colors.amber,
           surface: Color(0xFF1E1E1E), // nice modern dark surface
         ),
+        cardTheme: CardThemeData(
+          color: Color(0xFF1E1E1E),
+          elevation: 0,
+          margin: const EdgeInsets.all(8),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(6),
+            side: BorderSide(color: Colors.grey[800]!, width: 1.2),
+          ),
+        ),
+        dividerTheme: DividerThemeData(
+          color: Colors.grey[800],
+          thickness: 1,
+          space: 16,
+        ),
         scaffoldBackgroundColor: const Color(0xFF121212), // pure dark
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.transparent,
           elevation: 0,
           centerTitle: true,
+          toolbarHeight: 60,
+          shape: Border(
+            bottom: BorderSide(
+              color: Color.fromARGB(255, 76, 87, 93),
+              width: 1.5,
+            ),
+          ),
         ),
       ),
       themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
