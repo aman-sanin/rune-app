@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 void main() {
@@ -58,7 +59,25 @@ class _RuneAppState extends State<RuneApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      theme: ThemeData.dark(),
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        textTheme: GoogleFonts.orbitronTextTheme(
+          // Inter is clean, minimal
+          ThemeData.dark().textTheme,
+        ),
+        colorScheme: const ColorScheme.dark(
+          primary: Colors.deepPurple,
+          secondary: Colors.amber,
+          surface: Color(0xFF1E1E1E), // nice modern dark surface
+        ),
+        scaffoldBackgroundColor: const Color(0xFF121212), // pure dark
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          centerTitle: true,
+        ),
+      ),
+
       debugShowCheckedModeBanner: false,
       home: Scaffold(
         appBar: AppBar(title: const Text('Rune'), centerTitle: true),
