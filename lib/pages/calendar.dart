@@ -20,17 +20,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
   DateTime? _selectedDay;
 
   late final Box eventsBox;
+  late final Box tasksBox;
   List<Map<String, dynamic>> _events = [];
+  List<Map<String, dynamic>> _tasks = [];
 
   @override
   void initState() {
     super.initState();
     eventsBox = Hive.box('eventsBox');
+    tasksBox = Hive.box('tasksBox');
+    _loadEvents();
+    _loadTasks();
+  }
 
-    // Load events from Hive safely
+  void _loadEvents() {
     final storedEvents = eventsBox.get('all_events', defaultValue: []);
     _events = List<Map<String, dynamic>>.from(
       (storedEvents as List).map((e) => Map<String, dynamic>.from(e)),
+    );
+  }
+
+  void _loadTasks() {
+    final storedTasks = tasksBox.get('all_tasks', defaultValue: []);
+    _tasks = List<Map<String, dynamic>>.from(
+      (storedTasks as List).map((e) => Map<String, dynamic>.from(e)),
     );
   }
 
@@ -55,6 +68,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _selectedDay!.day,
     );
     return _eventsMap[key] ?? [];
+  }
+
+  List<Map<String, dynamic>> tasksForEvent(Map<String, dynamic> event) {
+    // Tasks linked by title (you can also use a unique ID)
+    return _tasks.where((t) => t['linkedEventId'] == event['title']).toList();
   }
 
   void _showAddEventDialog() {
@@ -116,7 +134,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             final file = File(result.files.single.path!);
                             final content = await file.readAsString();
                             _importEventsFromCsv(content);
-                            Navigator.pop(context); // close sheet after import
+                            Navigator.pop(context);
                           }
                         },
                       ),
@@ -169,19 +187,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () {
-                      if (_titleController.text.isNotEmpty) {
-                        final newEvent = {
-                          "title": _titleController.text,
-                          "description": _descController.text,
-                          "date": selectedDate,
-                          "countdown": countdownEnabled,
-                        };
-                        setState(() {
-                          _events.add(newEvent);
-                        });
-                        eventsBox.put('all_events', _events); // persist
-                        Navigator.pop(context);
-                      }
+                      if (_titleController.text.isEmpty) return;
+                      final newEvent = {
+                        "title": _titleController.text,
+                        "description": _descController.text,
+                        "date": selectedDate,
+                        "countdown": countdownEnabled,
+                      };
+                      setState(() {
+                        _events.add(newEvent);
+                        eventsBox.put('all_events', _events);
+                      });
+                      Navigator.pop(context);
                     },
                     child: const Text("Add Event"),
                   ),
@@ -196,199 +213,212 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   void _importEventsFromCsv(String content) {
     final lines = const LineSplitter().convert(content);
-    int added = 0;
-    int skipped = 0;
-
     for (var line in lines) {
       final parts = line.split(',');
-
-      // Check for minimum required fields: title and date.
-      if (parts.length < 2) {
-        skipped++;
-        continue;
-      }
-
+      if (parts.length < 2) continue;
       final title = parts[0].trim();
-      if (title.isEmpty) {
-        skipped++;
-        continue; // Skip if title is empty
-      }
-
-      // Parse date in dd/mm/yyyy format.
-      DateTime? date;
       final dateParts = parts[1].trim().split('/');
-      if (dateParts.length == 3) {
-        try {
-          final day = int.parse(dateParts[0]);
-          final month = int.parse(dateParts[1]);
-          final year = int.parse(dateParts[2]);
-          date = DateTime(year, month, day);
-        } catch (_) {
-          date = null;
-        }
-      }
-      if (date == null) {
-        skipped++;
-        continue; // Skip if date is invalid or couldn't be parsed
-      }
-
-      // Optional description (defaults to empty string).
+      if (dateParts.length != 3) continue;
+      final date = DateTime(
+        int.parse(dateParts[2]),
+        int.parse(dateParts[1]),
+        int.parse(dateParts[0]),
+      );
       final description = parts.length > 2 ? parts[2].trim() : '';
-
-      // Optional countdown (defaults to false).
       final countdown =
           parts.length > 3 && parts[3].trim().toLowerCase() == 'true';
-
-      final newEvent = {
+      _events.add({
         "title": title,
         "description": description,
         "date": date,
         "countdown": countdown,
-      };
-      _events.add(newEvent);
-      added++;
+      });
     }
-
-    // Persist events.
     eventsBox.put('all_events', _events);
-
-    // Show feedback.
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'CSV import complete: $added added, $skipped skipped due to errors.',
-        ),
-        duration: const Duration(seconds: 3),
-      ),
-    );
-
-    setState(() {}); // Refresh the calendar
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            TableCalendar(
-              focusedDay: _focusedDay,
-              firstDay: DateTime.utc(2020, 1, 1),
-              lastDay: DateTime.utc(2030, 12, 31),
-              selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-              onDaySelected: (selectedDay, focusedDay) {
-                setState(() {
-                  _selectedDay = selectedDay;
-                  _focusedDay = focusedDay;
-                });
-              },
-              calendarStyle: const CalendarStyle(
-                todayDecoration: BoxDecoration(
-                  color: Color(0xFF4FC3F7),
-                  shape: BoxShape.circle,
-                ),
-                selectedDecoration: BoxDecoration(
-                  color: Colors.orange,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              calendarBuilders: CalendarBuilders(
-                markerBuilder: (context, day, events) {
-                  final key = DateTime(day.year, day.month, day.day);
-                  if (_eventsMap.containsKey(key)) {
-                    return Positioned(
-                      bottom: 4,
-                      child: Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.grey[300],
-                        ),
-                      ),
-                    );
-                  }
-                  return null;
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: _selectedEvents.isEmpty
-                  ? const Center(child: Text("No events on this day"))
-                  : ListView.builder(
-                      itemCount: _selectedEvents.length,
-                      itemBuilder: (context, index) {
-                        final event = _selectedEvents[index];
-                        return EventTile(
-                          title: event["title"],
-                          date:
-                              "${event['date'].day}/${event['date'].month}/${event['date'].year}",
-                          description: event["description"],
-                          onTap: () async {
-                            final shouldDelete = await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => EventDetailsScreen(
-                                  event: event,
-                                  eventsBox: eventsBox,
-                                ),
-                              ),
-                            );
-
-                            if (shouldDelete == true) {
-                              setState(() {
-                                _events.remove(event);
-                                eventsBox.put('all_events', _events);
-                              });
-                            }
-                          },
-                        );
-                      },
+    return ValueListenableBuilder(
+      valueListenable: tasksBox.listenable(),
+      builder: (context, _, __) {
+        _loadTasks();
+        return Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                TableCalendar(
+                  focusedDay: _focusedDay,
+                  firstDay: DateTime.utc(2020, 1, 1),
+                  lastDay: DateTime.utc(2030, 12, 31),
+                  selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+                  onDaySelected: (selectedDay, focusedDay) {
+                    setState(() {
+                      _selectedDay = selectedDay;
+                      _focusedDay = focusedDay;
+                    });
+                  },
+                  calendarStyle: const CalendarStyle(
+                    todayDecoration: BoxDecoration(
+                      color: Color(0xFF4FC3F7),
+                      shape: BoxShape.circle,
                     ),
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: Stack(
-        children: [
-          Positioned(
-            bottom: 16,
-            right: 16,
-            child: FloatingActionButton.extended(
-              onPressed: _showAddEventDialog,
-              icon: const Icon(Icons.add),
-              label: const Text("Add Event"),
-              backgroundColor: Colors.deepPurple,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                side: const BorderSide(color: Colors.amber, width: 1.5),
-                borderRadius: BorderRadius.circular(12),
-              ),
+                    selectedDecoration: BoxDecoration(
+                      color: Colors.orange,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  calendarBuilders: CalendarBuilders(
+                    markerBuilder: (context, day, events) {
+                      final key = DateTime(day.year, day.month, day.day);
+                      if (_eventsMap.containsKey(key)) {
+                        return Positioned(
+                          bottom: 4,
+                          child: Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.grey[300],
+                            ),
+                          ),
+                        );
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: _selectedEvents.isEmpty
+                      ? const Center(child: Text("No events on this day"))
+                      : ListView.builder(
+                          itemCount: _selectedEvents.length,
+                          itemBuilder: (context, index) {
+                            final event = _selectedEvents[index];
+                            final linkedTasks = tasksForEvent(event);
+                            final hasCountdown = event['countdown'] == true;
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                EventTile(
+                                  title: event["title"],
+                                  date:
+                                      "${event['date'].day}/${event['date'].month}/${event['date'].year}",
+                                  description: event["description"],
+                                  countdown: hasCountdown,
+                                  onTap: () async {
+                                    final shouldDelete = await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            EventDetailsScreen(
+                                              event: event,
+                                              eventsBox: eventsBox,
+                                            ),
+                                      ),
+                                    );
+
+                                    if (shouldDelete == true) {
+                                      setState(() {
+                                        _events.remove(event);
+                                        eventsBox.put('all_events', _events);
+                                      });
+                                    }
+                                  },
+                                ),
+                                if (linkedTasks.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 16.0),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: linkedTasks
+                                          .map(
+                                            (task) => ListTile(
+                                              title: Text(task['title']),
+                                              leading: Checkbox(
+                                                value: task['done'],
+                                                onChanged: (val) {
+                                                  final allTasks =
+                                                      (tasksBox.get(
+                                                                'all_tasks',
+                                                                defaultValue:
+                                                                    [],
+                                                              )
+                                                              as List)
+                                                          .map(
+                                                            (e) =>
+                                                                Map<
+                                                                  String,
+                                                                  dynamic
+                                                                >.from(
+                                                                  e as Map,
+                                                                ),
+                                                          )
+                                                          .toList();
+                                                  final taskIndex = allTasks
+                                                      .indexWhere(
+                                                        (t) => t == task,
+                                                      );
+                                                  setState(() {
+                                                    allTasks[taskIndex]['done'] =
+                                                        val;
+                                                    tasksBox.put(
+                                                      'all_tasks',
+                                                      allTasks,
+                                                    );
+                                                  });
+                                                },
+                                              ),
+                                            ),
+                                          )
+                                          .toList(),
+                                    ),
+                                  ),
+                                const Divider(),
+                              ],
+                            );
+                          },
+                        ),
+                ),
+              ],
             ),
           ),
-          Positioned(
-            bottom: 16,
-            left: 16,
-            child: FloatingActionButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => CountdownScreen()),
-                );
-              },
-              backgroundColor: Colors.deepPurple,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+          floatingActionButton: Stack(
+            children: [
+              Positioned(
+                bottom: 16,
+                right: 16,
+                child: FloatingActionButton.extended(
+                  onPressed: _showAddEventDialog,
+                  icon: const Icon(Icons.add),
+                  label: const Text("Add Event"),
+                  backgroundColor: Colors.deepPurple,
+                ),
               ),
-              mini: true,
-              elevation: 4,
-              child: const Icon(Icons.hourglass_bottom, size: 20),
-            ),
+              Positioned(
+                bottom: 16,
+                left: 16,
+                child: FloatingActionButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => CountdownScreen()),
+                    );
+                  },
+                  backgroundColor: Colors.deepPurple,
+                  mini: true,
+                  child: const Icon(Icons.hourglass_bottom, size: 20),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -397,6 +427,7 @@ class EventTile extends StatelessWidget {
   final String title;
   final String date;
   final String description;
+  final bool countdown;
   final VoidCallback? onTap;
 
   const EventTile({
@@ -404,6 +435,7 @@ class EventTile extends StatelessWidget {
     required this.title,
     required this.date,
     required this.description,
+    this.countdown = false,
     this.onTap,
   });
 
@@ -422,9 +454,17 @@ class EventTile extends StatelessWidget {
       child: ListTile(
         title: Text(title, style: const TextStyle(fontSize: 18)),
         subtitle: Text('$date - $description'),
-        trailing: Icon(
-          Icons.arrow_forward_ios,
-          color: Theme.of(context).colorScheme.primary,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (countdown)
+              const Icon(
+                Icons.hourglass_bottom,
+                size: 18,
+                color: Colors.orange,
+              ),
+            const Icon(Icons.arrow_forward_ios),
+          ],
         ),
         onTap: onTap,
       ),
