@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'pages/events.dart';
 
 void main() {
   runApp(const RuneApp());
@@ -39,7 +40,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       },
       calendarStyle: const CalendarStyle(
         todayDecoration: BoxDecoration(
-          color: Colors.deepPurple,
+          color: Color(0xFF4FC3F7),
           shape: BoxShape.circle,
         ),
         selectedDecoration: BoxDecoration(
@@ -55,7 +56,11 @@ class _RuneAppState extends State<RuneApp> {
   int _currentIndex = 0; // Track the current index of active tab
   bool isDark = true;
 
-  final _screens = const [CalendarScreen(), Center(child: Text('Tasks'))];
+  final _screens = const [
+    CalendarScreen(),
+    EventsPage(),
+    Center(child: Text('Tasks')),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +69,7 @@ class _RuneAppState extends State<RuneApp> {
         brightness: Brightness.light,
         textTheme: GoogleFonts.orbitronTextTheme(ThemeData.light().textTheme),
         colorScheme: const ColorScheme.light(
-          primary: Colors.deepPurple,
+          primary: Colors.white,
           secondary: Colors.amber,
           surface: Color(0xFFD4A373), // light surface
         ),
@@ -73,6 +78,24 @@ class _RuneAppState extends State<RuneApp> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           centerTitle: true,
+          toolbarHeight: 60,
+          shape: Border(
+            bottom: BorderSide(color: Color(0xFFB59B7B), width: 1.5),
+          ),
+        ),
+        cardTheme: CardThemeData(
+          color: Color(0xFFEFE0C8),
+          elevation: 0,
+          margin: const EdgeInsets.all(8),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(6),
+            side: BorderSide(color: Color(0xFFB59B7B), width: 1.2),
+          ),
+        ),
+        dividerTheme: DividerThemeData(
+          color: Color(0xFFB59B7B),
+          thickness: 1,
+          space: 16,
         ),
       ),
       darkTheme: ThemeData(
@@ -82,7 +105,7 @@ class _RuneAppState extends State<RuneApp> {
           ThemeData.dark().textTheme,
         ),
         colorScheme: const ColorScheme.dark(
-          primary: Colors.deepPurple,
+          primary: Color(0xFF4FC3F7),
           secondary: Colors.amber,
           surface: Color(0xFF1E1E1E), // nice modern dark surface
         ),
