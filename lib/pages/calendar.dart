@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:table_calendar/table_calendar.dart';
 
-// ✨ These are now enabled to use your actual files.
 import 'countdown.dart';
 import 'events.dart';
 
@@ -22,7 +21,6 @@ class _CalendarScreenState extends State<CalendarScreen>
   @override
   bool get wantKeepAlive => true;
 
-  // State for managing calendar format (Month/Week)
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
@@ -32,10 +30,6 @@ class _CalendarScreenState extends State<CalendarScreen>
   List<Map<String, dynamic>> _events = [];
   List<Map<String, dynamic>> _tasks = [];
 
-  // --- FIX: Removed old scroll controller and state ---
-  // final ScrollController _scrollController = ScrollController();
-  // bool? _isScrollingCalendar;
-
   @override
   void initState() {
     super.initState();
@@ -44,13 +38,6 @@ class _CalendarScreenState extends State<CalendarScreen>
     tasksBox = Hive.box('tasksBox');
     _loadEvents();
     _loadTasks();
-  }
-
-  @override
-  void dispose() {
-    // --- FIX: Removed scroll controller disposal ---
-    // _scrollController.dispose();
-    super.dispose();
   }
 
   void _loadEvents() {
@@ -81,7 +68,6 @@ class _CalendarScreenState extends State<CalendarScreen>
   Map<DateTime, List<Map<String, dynamic>>> get _eventsMap {
     Map<DateTime, List<Map<String, dynamic>>> map = {};
     for (var event in _events) {
-      // Ensure date is a DateTime object before accessing properties
       if (event['date'] is DateTime) {
         final date = DateTime(
           event['date'].year,
@@ -224,7 +210,6 @@ class _CalendarScreenState extends State<CalendarScreen>
                         final newEvent = {
                           "title": titleController.text,
                           "description": descController.text,
-                          // FIX: Store dates as standardized strings
                           "date": selectedDate.toIso8601String(),
                           "countdown": countdownEnabled,
                         };
@@ -273,7 +258,6 @@ class _CalendarScreenState extends State<CalendarScreen>
         currentEvents.add({
           "title": title,
           "description": description,
-          // FIX: Store dates as standardized strings
           "date": date.toIso8601String(),
           "countdown": countdown,
         });
@@ -284,132 +268,258 @@ class _CalendarScreenState extends State<CalendarScreen>
     eventsBox.put('all_events', currentEvents);
   }
 
-  // --- FIX: Replaced entire build method with the modern, responsive version ---
   @override
   Widget build(BuildContext context) {
     super.build(context);
 
-    // Detect the device orientation for a responsive UI
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
 
     return ValueListenableBuilder(
       valueListenable: eventsBox.listenable(),
       builder: (context, Box box, __) {
-        // Reload data whenever the database changes
         _loadEvents();
         _loadTasks();
 
         return Scaffold(
           body: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: Column(
-              children: [
-                TableCalendar(
-                  headerStyle: HeaderStyle(
-                    formatButtonVisible: true,
-                    titleCentered: true,
-                    // Show a more compact header in landscape mode
-                    formatButtonShowsNext: !isLandscape,
-                  ),
-                  focusedDay: _focusedDay,
-                  firstDay: DateTime.utc(2020, 1, 1),
-                  lastDay: DateTime.utc(2030, 12, 31),
-                  selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-                  onDaySelected: (selectedDay, focusedDay) {
-                    setState(() {
-                      _selectedDay = selectedDay;
-                      _focusedDay = focusedDay;
-                    });
-                  },
-                  eventLoader: (day) =>
-                      _eventsMap[DateTime(day.year, day.month, day.day)] ?? [],
-                  calendarStyle: const CalendarStyle(
-                    todayDecoration: BoxDecoration(
-                      color: Color(0xFF4FC3F7),
-                      shape: BoxShape.circle,
-                    ),
-                    selectedDecoration: BoxDecoration(
-                      color: Colors.orange,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  // Make calendar format responsive to orientation
-                  calendarFormat: isLandscape
-                      ? CalendarFormat.week
-                      : _calendarFormat,
-                  onFormatChanged: (format) {
-                    // Only allow format changes when in portrait mode
-                    if (!isLandscape) {
-                      if (_calendarFormat != format) {
-                        setState(() {
-                          _calendarFormat = format;
-                        });
-                      }
-                    }
-                  },
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: _selectedEvents.isEmpty
-                      ? const Center(child: Text("No events on this day"))
-                      : ListView.builder(
-                          itemCount: _selectedEvents.length,
-                          itemBuilder: (context, index) {
-                            final event = _selectedEvents[index];
-                            final linkedTasks = tasksForEvent(event);
-                            final hasCountdown = event['countdown'] == true;
-
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                EventTile(
-                                  title: event["title"] ?? "No Title",
-                                  date: event['date'] != null
-                                      ? "${event['date'].day}/${event['date'].month}/${event['date'].year}"
-                                      : "No Date",
-                                  description:
-                                      event["description"] ?? "No Description",
-                                  countdown: hasCountdown,
-                                  onTap: () async {
-                                    await Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            EventDetailsScreen(
-                                              event: event,
-                                              eventsBox: eventsBox,
-                                            ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                                if (linkedTasks.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(
-                                      left: 16.0,
-                                      right: 16.0,
-                                      bottom: 8.0,
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: linkedTasks
-                                          .map(
-                                            (task) =>
-                                                Text("• ${task['title']}"),
-                                          )
-                                          .toList(),
-                                    ),
-                                  ),
-                                const Divider(),
-                              ],
-                            );
+            padding: const EdgeInsets.all(16),
+            child: isLandscape
+                ? Row(
+                    children: [
+                      // Calendar left
+                      Flexible(
+                        flex: 2,
+                        child: TableCalendar(
+                          focusedDay: _focusedDay,
+                          firstDay: DateTime.utc(2020, 1, 1),
+                          lastDay: DateTime.utc(2030, 12, 31),
+                          selectedDayPredicate: (day) =>
+                              isSameDay(_selectedDay, day),
+                          onDaySelected: (selectedDay, focusedDay) {
+                            setState(() {
+                              _selectedDay = selectedDay;
+                              _focusedDay = focusedDay;
+                            });
                           },
+                          calendarFormat: CalendarFormat.week,
+                          eventLoader: (day) =>
+                              _eventsMap[DateTime(
+                                day.year,
+                                day.month,
+                                day.day,
+                              )] ??
+                              [],
+                          headerStyle: const HeaderStyle(
+                            titleCentered: true,
+                            formatButtonVisible: false,
+                          ),
+                          calendarStyle: const CalendarStyle(
+                            todayDecoration: BoxDecoration(
+                              color: Color(0xFF4FC3F7),
+                              shape: BoxShape.circle,
+                            ),
+                            selectedDecoration: BoxDecoration(
+                              color: Colors.orange,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
                         ),
-                ),
-              ],
-            ),
+                      ),
+
+                      const SizedBox(width: 16),
+
+                      // Events right
+                      Flexible(
+                        flex: 3,
+                        child: _selectedEvents.isEmpty
+                            ? const Center(child: Text("No events on this day"))
+                            : ListView.builder(
+                                itemCount: _selectedEvents.length,
+                                itemBuilder: (context, index) {
+                                  final event = _selectedEvents[index];
+                                  final linkedTasks = tasksForEvent(event);
+                                  final hasCountdown =
+                                      event['countdown'] == true;
+
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      EventTile(
+                                        title: event["title"] ?? "No Title",
+                                        date: event['date'] != null
+                                            ? "${event['date'].day}/${event['date'].month}/${event['date'].year}"
+                                            : "No Date",
+                                        description:
+                                            event["description"] ??
+                                            "No Description",
+                                        countdown: hasCountdown,
+                                        onTap: () async {
+                                          await Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  EventDetailsScreen(
+                                                    event: event,
+                                                    eventsBox: eventsBox,
+                                                  ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                      if (linkedTasks.isNotEmpty)
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            left: 16.0,
+                                            right: 16.0,
+                                            bottom: 8.0,
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: linkedTasks
+                                                .map(
+                                                  (task) => Text(
+                                                    "• ${task['title']}",
+                                                  ),
+                                                )
+                                                .toList(),
+                                          ),
+                                        ),
+                                      const Divider(),
+                                    ],
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  )
+                : Column(
+                    children: [
+                      // Portrait layout
+                      TableCalendar(
+                        headerStyle: HeaderStyle(
+                          formatButtonVisible: true,
+                          titleCentered: true,
+                          formatButtonDecoration: BoxDecoration(
+                            color: Colors.blueAccent,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          formatButtonTextStyle: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                        ),
+                        availableCalendarFormats: const {
+                          CalendarFormat.month: 'M',
+                          CalendarFormat.twoWeeks: '2W',
+                          CalendarFormat.week: 'W',
+                        },
+                        focusedDay: _focusedDay,
+                        firstDay: DateTime.utc(2020, 1, 1),
+                        lastDay: DateTime.utc(2030, 12, 31),
+                        selectedDayPredicate: (day) =>
+                            isSameDay(_selectedDay, day),
+                        onDaySelected: (selectedDay, focusedDay) {
+                          setState(() {
+                            _selectedDay = selectedDay;
+                            _focusedDay = focusedDay;
+                          });
+                        },
+                        eventLoader: (day) =>
+                            _eventsMap[DateTime(
+                              day.year,
+                              day.month,
+                              day.day,
+                            )] ??
+                            [],
+                        calendarStyle: const CalendarStyle(
+                          todayDecoration: BoxDecoration(
+                            color: Color(0xFF4FC3F7),
+                            shape: BoxShape.circle,
+                          ),
+                          selectedDecoration: BoxDecoration(
+                            color: Colors.orange,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        calendarFormat: _calendarFormat,
+                        onFormatChanged: (format) {
+                          if (_calendarFormat != format) {
+                            setState(() {
+                              _calendarFormat = format;
+                            });
+                          }
+                        },
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      Expanded(
+                        child: _selectedEvents.isEmpty
+                            ? const Center(child: Text("No events on this day"))
+                            : ListView.builder(
+                                itemCount: _selectedEvents.length,
+                                itemBuilder: (context, index) {
+                                  final event = _selectedEvents[index];
+                                  final linkedTasks = tasksForEvent(event);
+                                  final hasCountdown =
+                                      event['countdown'] == true;
+
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      EventTile(
+                                        title: event["title"] ?? "No Title",
+                                        date: event['date'] != null
+                                            ? "${event['date'].day}/${event['date'].month}/${event['date'].year}"
+                                            : "No Date",
+                                        description:
+                                            event["description"] ??
+                                            "No Description",
+                                        countdown: hasCountdown,
+                                        onTap: () async {
+                                          await Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  EventDetailsScreen(
+                                                    event: event,
+                                                    eventsBox: eventsBox,
+                                                  ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                      if (linkedTasks.isNotEmpty)
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            left: 16.0,
+                                            right: 16.0,
+                                            bottom: 8.0,
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: linkedTasks
+                                                .map(
+                                                  (task) => Text(
+                                                    "• ${task['title']}",
+                                                  ),
+                                                )
+                                                .toList(),
+                                          ),
+                                        ),
+                                      const Divider(),
+                                    ],
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
           ),
           floatingActionButton: Stack(
             children: [
