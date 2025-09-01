@@ -24,7 +24,7 @@ class _RuneAppState extends State<RuneApp> {
   int _currentIndex = 0; // Track the current index of active tab
   bool isDark = true;
 
-  final _screens = const [
+  final _screens = [
     CalendarScreen(), // now contains both calendar & events list
     TasksScreen(), // your Tasks tab
   ];

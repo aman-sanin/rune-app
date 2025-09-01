@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 class TasksScreen extends StatefulWidget {
-  const TasksScreen({super.key});
-
   @override
-  State<TasksScreen> createState() => _TasksScreenState();
+  _TasksScreenState createState() => _TasksScreenState();
 }
 
-class _TasksScreenState extends State<TasksScreen> {
+class _TasksScreenState extends State<TasksScreen>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   late final Box tasksBox;
   List<Map<String, dynamic>> tasks = [];
 
@@ -109,6 +111,8 @@ class _TasksScreenState extends State<TasksScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // required with mixin
+
     return Scaffold(
       body: Padding(
         padding: const EdgeInsets.all(16),
