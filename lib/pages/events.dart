@@ -185,7 +185,24 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
             Center(
               child: ElevatedButton.icon(
                 onPressed: () {
-                  Navigator.pop(context, true);
+                  final allEvents =
+                      (widget.eventsBox.get('all_events', defaultValue: [])
+                              as List)
+                          .map((e) => Map<String, dynamic>.from(e))
+                          .toList();
+
+                  final index = allEvents.indexWhere(
+                    (e) =>
+                        e['title'] == widget.event['title'] &&
+                        e['date'] == widget.event['date'],
+                  );
+
+                  if (index != -1) {
+                    allEvents.removeAt(index);
+                    widget.eventsBox.put('all_events', allEvents);
+                  }
+
+                  Navigator.pop(context, true); // go back after deleting
                 },
                 icon: const Icon(Icons.delete),
                 label: const Text("Delete Event"),
