@@ -1,136 +1,106 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'pages/calendar.dart';
-import 'pages/tasks.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:provider/provider.dart';
+
+import 'models/event.dart';
+import 'models/task.dart';
+import 'pages/calendar.dart';
+import 'pages/countdown.dart';
+import 'pages/tasks.dart';
+import 'services/database_service.dart';
+import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
 
-  await Hive.openBox('eventsBox');
-  await Hive.openBox('tasksBox');
+  Hive.registerAdapter(EventAdapter());
+  Hive.registerAdapter(TaskAdapter());
+
+  await Hive.openBox<Event>(DatabaseService.eventsBoxName);
+  await Hive.openBox<Task>(DatabaseService.tasksBoxName);
+
   runApp(const RuneApp());
 }
 
-class RuneApp extends StatefulWidget {
+class RuneApp extends StatelessWidget {
   const RuneApp({super.key});
 
   @override
-  State<RuneApp> createState() => _RuneAppState();
+  Widget build(BuildContext context) {
+    // The top-level app now only provides the database service
+    // and loads the main screen.
+    return Provider(
+      create: (_) => DatabaseService(),
+      child: const MainScreen(),
+    );
+  }
 }
 
-class _RuneAppState extends State<RuneApp> {
-  int _currentIndex = 0; // Track the current index of active tab
-  bool isDark = true;
+class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
 
-  final _screens = [
-    CalendarScreen(), // now contains both calendar & events list
-    TasksScreen(), // your Tasks tab
-  ];
+  @override
+  State<MainScreen> createState() => _MainScreenState();
+}
+
+class _MainScreenState extends State<MainScreen> {
+  int _currentIndex = 0;
+  // 1. Add state to manage the current theme
+  bool _isDarkMode = true;
+
+  final List<Widget> _screens = [const CalendarScreen(), const TasksScreen()];
+
+  // 2. Add a function to toggle the theme
+  void _toggleTheme() {
+    setState(() {
+      _isDarkMode = !_isDarkMode;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    // 3. MaterialApp is now built here, so it can be rebuilt with a new theme.
     return MaterialApp(
-      theme: ThemeData(
-        brightness: Brightness.light,
-        textTheme: GoogleFonts.orbitronTextTheme(ThemeData.light().textTheme),
-        colorScheme: const ColorScheme.light(
-          primary: Color.fromARGB(255, 38, 64, 189),
-          secondary: Colors.amber,
-          surface: Color(0xFFD4A373), // light surface
-        ),
-        scaffoldBackgroundColor: Color(0xFFE3CBAA),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          centerTitle: true,
-          toolbarHeight: 60,
-          shape: Border(
-            bottom: BorderSide(color: Color(0xFFB59B7B), width: 1.5),
-          ),
-        ),
-        cardTheme: CardThemeData(
-          color: Color(0xFFEFE0C8),
-          elevation: 0,
-          margin: const EdgeInsets.all(8),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(6),
-            side: BorderSide(color: Color(0xFFB59B7B), width: 1.2),
-          ),
-        ),
-        dividerTheme: DividerThemeData(
-          color: Color(0xFFB59B7B),
-          thickness: 1,
-          space: 16,
-        ),
-      ),
-      darkTheme: ThemeData(
-        brightness: Brightness.dark,
-        textTheme: GoogleFonts.orbitronTextTheme(
-          // Inter is clean, minimal
-          ThemeData.dark().textTheme,
-        ),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF4FC3F7),
-          secondary: Colors.amber,
-          surface: Color(0xFF1E1E1E), // nice modern dark surface
-        ),
-        cardTheme: CardThemeData(
-          color: Color(0xFF1E1E1E),
-          elevation: 0,
-          margin: const EdgeInsets.all(8),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(6),
-            side: BorderSide(color: Colors.grey[800]!, width: 1.2),
-          ),
-        ),
-        dividerTheme: DividerThemeData(
-          color: Colors.grey[800],
-          thickness: 1,
-          space: 16,
-        ),
-        scaffoldBackgroundColor: const Color(0xFF121212), // pure dark
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          centerTitle: true,
-          toolbarHeight: 60,
-          shape: Border(
-            bottom: BorderSide(
-              color: Color.fromARGB(255, 76, 87, 93),
-              width: 1.5,
-            ),
-          ),
-        ),
-      ),
-      themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
-
+      title: 'Rune',
+      theme: lightTheme,
+      darkTheme: darkTheme,
+      // 4. Connect the theme mode to our state variable
+      themeMode: _isDarkMode ? ThemeMode.dark : ThemeMode.light,
       debugShowCheckedModeBanner: false,
       home: Scaffold(
         appBar: AppBar(
+          // 5. Use the `leading` property to place an icon on the left
+          leading: IconButton(
+            icon: Icon(
+              _isDarkMode
+                  ? Icons.light_mode_outlined
+                  : Icons.dark_mode_outlined,
+            ),
+            tooltip: 'Toggle Theme',
+            onPressed: _toggleTheme,
+          ),
           title: const Text('Rune'),
           centerTitle: true,
           actions: [
             IconButton(
-              icon: Icon(isDark ? Icons.dark_mode : Icons.light_mode),
+              icon: const Icon(Icons.hourglass_bottom_outlined),
+              tooltip: 'View Countdowns',
               onPressed: () {
-                setState(() {
-                  isDark = !isDark;
-                });
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const CountdownScreen(),
+                  ),
+                );
               },
             ),
           ],
         ),
-
-        body: _screens[_currentIndex],
+        body: IndexedStack(index: _currentIndex, children: _screens),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _currentIndex,
-          onTap: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
-          },
+          onTap: (index) => setState(() => _currentIndex = index),
           items: const [
             BottomNavigationBarItem(
               icon: Icon(Icons.calendar_month),

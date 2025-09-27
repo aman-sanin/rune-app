@@ -1,12 +1,12 @@
-import 'dart:convert';
-import 'dart:io';
-
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:collection/collection.dart';
 
-import 'countdown.dart';
+import '../models/event.dart';
+import '../services/database_service.dart';
 import 'events.dart';
 
 class CalendarScreen extends StatefulWidget {
@@ -16,208 +16,108 @@ class CalendarScreen extends StatefulWidget {
   State<CalendarScreen> createState() => _CalendarScreenState();
 }
 
-class _CalendarScreenState extends State<CalendarScreen>
-    with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
-  CalendarFormat _calendarFormat = CalendarFormat.month;
+class _CalendarScreenState extends State<CalendarScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-
-  late final Box eventsBox;
-  late final Box tasksBox;
-  List<Map<String, dynamic>> _events = [];
-  List<Map<String, dynamic>> _tasks = [];
 
   @override
   void initState() {
     super.initState();
     _selectedDay = _focusedDay;
-    eventsBox = Hive.box('eventsBox');
-    tasksBox = Hive.box('tasksBox');
-    _loadEvents();
-    _loadTasks();
   }
 
-  void _loadEvents() {
-    final storedEvents = eventsBox.get('all_events', defaultValue: []) as List;
-    _events = storedEvents.map((e) {
-      final eventMap = Map<String, dynamic>.from(e as Map);
-      if (eventMap['date'] is String) {
-        eventMap['date'] = DateTime.parse(eventMap['date']);
-      }
-      return eventMap;
-    }).toList();
+  DateTime _normalizeDate(DateTime date) {
+    return DateTime.utc(date.year, date.month, date.day);
   }
 
-  void _loadTasks() {
-    final storedTasks = tasksBox.get('all_tasks', defaultValue: []) as List;
-    _tasks = storedTasks.map((e) {
-      final taskMap = Map<String, dynamic>.from(e as Map);
-      if (taskMap['subtasks'] != null) {
-        final rawSubtasks = taskMap['subtasks'] as List;
-        taskMap['subtasks'] = rawSubtasks.map((subtask) {
-          return Map<String, dynamic>.from(subtask as Map);
-        }).toList();
-      }
-      return taskMap;
-    }).toList();
-  }
-
-  Map<DateTime, List<Map<String, dynamic>>> get _eventsMap {
-    Map<DateTime, List<Map<String, dynamic>>> map = {};
-    for (var event in _events) {
-      if (event['date'] is DateTime) {
-        final date = DateTime(
-          event['date'].year,
-          event['date'].month,
-          event['date'].day,
-        );
-        map.putIfAbsent(date, () => []).add(event);
-      }
-    }
-    return map;
-  }
-
-  List<Map<String, dynamic>> get _selectedEvents {
-    if (_selectedDay == null) return [];
-    final key = DateTime(
-      _selectedDay!.year,
-      _selectedDay!.month,
-      _selectedDay!.day,
-    );
-    return _eventsMap[key] ?? [];
-  }
-
-  List<Map<String, dynamic>> tasksForEvent(Map<String, dynamic> event) {
-    return _tasks.where((t) => t['linkedEventId'] == event['title']).toList();
-  }
-
-  void _showAddEventDialog() {
+  void _showAddEventDialog(BuildContext context) {
+    final dbService = Provider.of<DatabaseService>(context, listen: false);
     final titleController = TextEditingController();
     final descController = TextEditingController();
-    bool countdownEnabled = false;
-    DateTime selectedDate = _selectedDay ?? _focusedDay;
+    DateTime selectedDate = _selectedDay ?? DateTime.now();
+    bool isCountdown = false;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-      ),
-      builder: (context) {
+      builder: (ctx) {
         return StatefulBuilder(
-          builder: (context, setModalState) {
+          builder: (modalContext, setModalState) {
             return Padding(
               padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 16,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                top: 20,
+                left: 20,
+                right: 20,
+                bottom: MediaQuery.of(modalContext).viewInsets.bottom + 20,
               ),
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: titleController,
-                            decoration: const InputDecoration(
-                              labelText: 'Event Title',
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          tooltip: "Import CSV",
-                          icon: const Row(
-                            children: [
-                              Icon(Icons.add, size: 20),
-                              SizedBox(width: 2),
-                              Text(
-                                "CSV",
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                          onPressed: () async {
-                            final result = await FilePicker.platform.pickFiles(
-                              type: FileType.custom,
-                              allowedExtensions: ['csv'],
-                            );
-                            if (result != null &&
-                                result.files.single.path != null) {
-                              final file = File(result.files.single.path!);
-                              final content = await file.readAsString();
-                              _importEventsFromCsv(content);
-                              if (mounted) Navigator.pop(context);
-                            }
-                          },
-                        ),
-                      ],
+                    Text(
+                      "Add Event",
+                      style: Theme.of(context).textTheme.headlineSmall,
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 20),
+                    TextField(
+                      controller: titleController,
+                      decoration: const InputDecoration(
+                        labelText: "Event Title",
+                      ),
+                    ),
+                    const SizedBox(height: 10),
                     TextField(
                       controller: descController,
                       decoration: const InputDecoration(
-                        labelText: 'Event Description (optional)',
+                        labelText: "Description (Optional)",
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text("Date: "),
+                        Text(
+                          "Date: ${DateFormat.yMMMd().format(selectedDate)}",
+                        ),
                         TextButton(
+                          child: const Text("Change"),
                           onPressed: () async {
-                            final picked = await showDatePicker(
+                            final pickedDate = await showDatePicker(
                               context: context,
                               initialDate: selectedDate,
                               firstDate: DateTime(2020),
                               lastDate: DateTime(2030),
                             );
-                            if (picked != null) {
-                              setModalState(() => selectedDate = picked);
+                            if (pickedDate != null) {
+                              setModalState(() => selectedDate = pickedDate);
                             }
                           },
-                          child: Text(
-                            "${selectedDate.day}/${selectedDate.month}/${selectedDate.year}",
-                          ),
                         ),
                       ],
                     ),
-                    Row(
-                      children: [
-                        const Text("Enable Countdown"),
-                        Checkbox(
-                          value: countdownEnabled,
-                          onChanged: (val) => setModalState(
-                            () => countdownEnabled = val ?? false,
-                          ),
-                        ),
-                      ],
+                    SwitchListTile(
+                      title: const Text("Enable Countdown"),
+                      value: isCountdown,
+                      onChanged: (val) =>
+                          setModalState(() => isCountdown = val),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     ElevatedButton(
+                      child: const Text("Save Event"),
                       onPressed: () {
                         if (titleController.text.isEmpty) return;
-                        final events = List.from(
-                          eventsBox.get('all_events', defaultValue: []),
+
+                        final newEvent = Event(
+                          title: titleController.text,
+                          description: descController.text,
+                          date: selectedDate,
+                          countdown: isCountdown,
                         );
-                        final newEvent = {
-                          "title": titleController.text,
-                          "description": descController.text,
-                          "date": selectedDate.toIso8601String(),
-                          "countdown": countdownEnabled,
-                        };
-                        events.add(newEvent);
-                        eventsBox.put('all_events', events);
-                        Navigator.pop(context);
+
+                        dbService.addEvent(newEvent);
+                        Navigator.pop(context); // Close the bottom sheet
                       },
-                      child: const Text("Add Event"),
                     ),
                   ],
                 ),
@@ -229,196 +129,38 @@ class _CalendarScreenState extends State<CalendarScreen>
     );
   }
 
-  void _importEventsFromCsv(String content) {
-    List<dynamic> currentEvents = List.from(
-      eventsBox.get('all_events', defaultValue: []),
-    );
-    final lines = const LineSplitter().convert(content);
+  // In lib/pages/calendar.dart
 
-    for (var line in lines) {
-      if (line.trim().isEmpty) continue;
-      final parts = line.split(',');
-      if (parts.length < 2) continue;
-
-      try {
-        final title = parts[0].trim();
-        final dateParts = parts[1].trim().split('/');
-        if (dateParts.length != 3) continue;
-
-        final date = DateTime(
-          int.parse(dateParts[2]), // Year
-          int.parse(dateParts[1]), // Month
-          int.parse(dateParts[0]), // Day
-        );
-
-        final description = parts.length > 2 ? parts[2].trim() : '';
-        final countdown =
-            parts.length > 3 && parts[3].trim().toLowerCase() == 'true';
-
-        currentEvents.add({
-          "title": title,
-          "description": description,
-          "date": date.toIso8601String(),
-          "countdown": countdown,
-        });
-      } catch (e) {
-        debugPrint("Error parsing CSV line: $line, Error: $e");
-      }
-    }
-    eventsBox.put('all_events', currentEvents);
-  }
+  // In lib/pages/calendar.dart
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
+    final dbService = Provider.of<DatabaseService>(context, listen: false);
 
-    final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
+    return Scaffold(
+      body: ValueListenableBuilder<Box<Event>>(
+        valueListenable: dbService.eventsListenable,
+        builder: (context, box, _) {
+          final events = box.values.toList();
+          final eventsByDate = groupBy(
+            events,
+            (Event e) => _normalizeDate(e.date),
+          );
 
-    return ValueListenableBuilder(
-      valueListenable: eventsBox.listenable(),
-      builder: (context, Box box, __) {
-        _loadEvents();
-        _loadTasks();
-
-        return Scaffold(
-          body: Padding(
-            padding: const EdgeInsets.all(16),
-            child: isLandscape
-                ? Row(
-                    children: [
-                      // Calendar left
-                      Flexible(
-                        flex: 2,
-                        child: TableCalendar(
-                          focusedDay: _focusedDay,
-                          firstDay: DateTime.utc(2020, 1, 1),
-                          lastDay: DateTime.utc(2030, 12, 31),
-                          selectedDayPredicate: (day) =>
-                              isSameDay(_selectedDay, day),
-                          onDaySelected: (selectedDay, focusedDay) {
-                            setState(() {
-                              _selectedDay = selectedDay;
-                              _focusedDay = focusedDay;
-                            });
-                          },
-                          calendarFormat: CalendarFormat.week,
-                          eventLoader: (day) =>
-                              _eventsMap[DateTime(
-                                day.year,
-                                day.month,
-                                day.day,
-                              )] ??
-                              [],
-                          headerStyle: const HeaderStyle(
-                            titleCentered: true,
-                            formatButtonVisible: false,
-                          ),
-                          calendarStyle: const CalendarStyle(
-                            todayDecoration: BoxDecoration(
-                              color: Color(0xFF4FC3F7),
-                              shape: BoxShape.circle,
-                            ),
-                            selectedDecoration: BoxDecoration(
-                              color: Colors.orange,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(width: 16),
-
-                      // Events right
-                      Flexible(
-                        flex: 3,
-                        child: _selectedEvents.isEmpty
-                            ? const Center(child: Text("No events on this day"))
-                            : ListView.builder(
-                                itemCount: _selectedEvents.length,
-                                itemBuilder: (context, index) {
-                                  final event = _selectedEvents[index];
-                                  final linkedTasks = tasksForEvent(event);
-                                  final hasCountdown =
-                                      event['countdown'] == true;
-
-                                  return Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      EventTile(
-                                        title: event["title"] ?? "No Title",
-                                        date: event['date'] != null
-                                            ? "${event['date'].day}/${event['date'].month}/${event['date'].year}"
-                                            : "No Date",
-                                        description:
-                                            event["description"] ??
-                                            "No Description",
-                                        countdown: hasCountdown,
-                                        onTap: () async {
-                                          await Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (context) =>
-                                                  EventDetailsScreen(
-                                                    event: event,
-                                                    eventsBox: eventsBox,
-                                                  ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                      if (linkedTasks.isNotEmpty)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            left: 16.0,
-                                            right: 16.0,
-                                            bottom: 8.0,
-                                          ),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: linkedTasks
-                                                .map(
-                                                  (task) => Text(
-                                                    "• ${task['title']}",
-                                                  ),
-                                                )
-                                                .toList(),
-                                          ),
-                                        ),
-                                      const Divider(),
-                                    ],
-                                  );
-                                },
-                              ),
-                      ),
-                    ],
-                  )
-                : Column(
-                    children: [
-                      // Portrait layout
-                      TableCalendar(
-                        headerStyle: HeaderStyle(
-                          formatButtonVisible: true,
-                          titleCentered: true,
-                          formatButtonDecoration: BoxDecoration(
-                            color: Colors.blueAccent,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          formatButtonTextStyle: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                          ),
-                        ),
-                        availableCalendarFormats: const {
-                          CalendarFormat.month: 'M',
-                          CalendarFormat.twoWeeks: '2W',
-                          CalendarFormat.week: 'W',
-                        },
+          // Use OrientationBuilder to return a different layout based on rotation
+          return OrientationBuilder(
+            builder: (context, orientation) {
+              if (orientation == Orientation.landscape) {
+                // --- LANDSCAPE LAYOUT (Original Style) ---
+                return Row(
+                  children: [
+                    Expanded(
+                      // 3. Flex values restored to your original preference
+                      flex: 3,
+                      child: TableCalendar<Event>(
+                        firstDay: DateTime.utc(2020),
+                        lastDay: DateTime.utc(2030),
                         focusedDay: _focusedDay,
-                        firstDay: DateTime.utc(2020, 1, 1),
-                        lastDay: DateTime.utc(2030, 12, 31),
                         selectedDayPredicate: (day) =>
                             isSameDay(_selectedDay, day),
                         onDaySelected: (selectedDay, focusedDay) {
@@ -428,184 +170,101 @@ class _CalendarScreenState extends State<CalendarScreen>
                           });
                         },
                         eventLoader: (day) =>
-                            _eventsMap[DateTime(
-                              day.year,
-                              day.month,
-                              day.day,
-                            )] ??
-                            [],
-                        calendarStyle: const CalendarStyle(
-                          todayDecoration: BoxDecoration(
-                            color: Color(0xFF4FC3F7),
-                            shape: BoxShape.circle,
-                          ),
-                          selectedDecoration: BoxDecoration(
-                            color: Colors.orange,
-                            shape: BoxShape.circle,
-                          ),
+                            eventsByDate[_normalizeDate(day)] ?? [],
+                        // 1. Calendar is now fixed to week view in landscape
+                        calendarFormat: CalendarFormat.week,
+                        // 2. Format button is hidden in landscape
+                        headerStyle: const HeaderStyle(
+                          formatButtonVisible: false,
+                          titleCentered: true,
                         ),
-                        calendarFormat: _calendarFormat,
-                        onFormatChanged: (format) {
-                          if (_calendarFormat != format) {
-                            setState(() {
-                              _calendarFormat = format;
-                            });
-                          }
-                        },
                       ),
-
-                      const SizedBox(height: 16),
-
-                      Expanded(
-                        child: _selectedEvents.isEmpty
-                            ? const Center(child: Text("No events on this day"))
-                            : ListView.builder(
-                                itemCount: _selectedEvents.length,
-                                itemBuilder: (context, index) {
-                                  final event = _selectedEvents[index];
-                                  final linkedTasks = tasksForEvent(event);
-                                  final hasCountdown =
-                                      event['countdown'] == true;
-
-                                  return Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      EventTile(
-                                        title: event["title"] ?? "No Title",
-                                        date: event['date'] != null
-                                            ? "${event['date'].day}/${event['date'].month}/${event['date'].year}"
-                                            : "No Date",
-                                        description:
-                                            event["description"] ??
-                                            "No Description",
-                                        countdown: hasCountdown,
-                                        onTap: () async {
-                                          await Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (context) =>
-                                                  EventDetailsScreen(
-                                                    event: event,
-                                                    eventsBox: eventsBox,
-                                                  ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                      if (linkedTasks.isNotEmpty)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            left: 16.0,
-                                            right: 16.0,
-                                            bottom: 8.0,
-                                          ),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: linkedTasks
-                                                .map(
-                                                  (task) => Text(
-                                                    "• ${task['title']}",
-                                                  ),
-                                                )
-                                                .toList(),
-                                          ),
-                                        ),
-                                      const Divider(),
-                                    ],
-                                  );
-                                },
-                              ),
+                    ),
+                    const VerticalDivider(width: 1),
+                    Expanded(
+                      flex: 2,
+                      child: _EventListView(
+                        events:
+                            eventsByDate[_normalizeDate(_selectedDay!)] ?? [],
                       ),
-                    ],
-                  ),
-          ),
-          floatingActionButton: Stack(
-            children: [
-              Positioned(
-                bottom: 16,
-                right: 16,
-                child: FloatingActionButton.extended(
-                  onPressed: _showAddEventDialog,
-                  icon: const Icon(Icons.add),
-                  label: const Text("Add Event"),
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                ),
-              ),
-              Positioned(
-                bottom: 16,
-                left: 32,
-                child: FloatingActionButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const CountdownScreen(),
+                    ),
+                  ],
+                );
+              } else {
+                // --- PORTRAIT LAYOUT ---
+                return Column(
+                  children: [
+                    TableCalendar<Event>(
+                      firstDay: DateTime.utc(2020),
+                      lastDay: DateTime.utc(2030),
+                      focusedDay: _focusedDay,
+                      selectedDayPredicate: (day) =>
+                          isSameDay(_selectedDay, day),
+                      onDaySelected: (selectedDay, focusedDay) {
+                        setState(() {
+                          _selectedDay = selectedDay;
+                          _focusedDay = focusedDay;
+                        });
+                      },
+                      eventLoader: (day) =>
+                          eventsByDate[_normalizeDate(day)] ?? [],
+                    ),
+                    const SizedBox(height: 8.0),
+                    Expanded(
+                      child: _EventListView(
+                        events:
+                            eventsByDate[_normalizeDate(_selectedDay!)] ?? [],
                       ),
-                    );
-                  },
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                  mini: true,
-                  child: const Icon(Icons.hourglass_bottom, size: 20),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+                    ),
+                  ],
+                );
+              }
+            },
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showAddEventDialog(context),
+        tooltip: 'Add Event',
+        child: const Icon(Icons.add),
+      ),
     );
   }
 }
 
-class EventTile extends StatelessWidget {
-  final String title;
-  final String date;
-  final String description;
-  final bool countdown;
-  final VoidCallback? onTap;
-
-  const EventTile({
-    super.key,
-    required this.title,
-    required this.date,
-    required this.description,
-    this.countdown = false,
-    this.onTap,
-  });
+class _EventListView extends StatelessWidget {
+  final List<Event> events;
+  const _EventListView({required this.events});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: Theme.of(context).cardTheme.color,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(6),
-        side: BorderSide(
-          color: Theme.of(context).dividerTheme.color ?? Colors.grey,
-          width: 1.2,
-        ),
-      ),
-      margin: const EdgeInsets.only(bottom: 16),
-      child: ListTile(
-        title: Text(title, style: const TextStyle(fontSize: 18)),
-        subtitle: Text('$date - $description'),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (countdown)
-              const Icon(
-                Icons.hourglass_bottom,
-                size: 18,
-                color: Colors.orange,
-              ),
-            const SizedBox(width: 8),
-            const Icon(Icons.arrow_forward_ios, size: 16),
-          ],
-        ),
-        onTap: onTap,
-      ),
+    if (events.isEmpty) {
+      return const Center(child: Text("No events on this day."));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      itemCount: events.length,
+      itemBuilder: (context, index) {
+        final event = events[index];
+        return Card(
+          margin: const EdgeInsets.symmetric(vertical: 4.0),
+          child: ListTile(
+            title: Text(event.title),
+            subtitle: Text(event.description ?? ''),
+            trailing: event.countdown
+                ? const Icon(Icons.hourglass_bottom, color: Colors.orange)
+                : null,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => EventDetailsScreen(eventKey: event.key),
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }

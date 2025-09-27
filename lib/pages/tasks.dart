@@ -1,255 +1,222 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:provider/provider.dart';
 
-class TasksScreen extends StatefulWidget {
+import '../models/task.dart';
+import '../services/database_service.dart';
+
+class TasksScreen extends StatelessWidget {
+  const TasksScreen({super.key});
+
   @override
-  _TasksScreenState createState() => _TasksScreenState();
+  Widget build(BuildContext context) {
+    final dbService = Provider.of<DatabaseService>(context, listen: false);
+
+    return Scaffold(
+      body: ValueListenableBuilder<Box<Task>>(
+        valueListenable: dbService.tasksListenable,
+        builder: (context, box, _) {
+          // CORRECTED FILTER: A top-level task is one with no parentKey.
+          final tasks = box.values
+              .where((task) => task.parentKey == null)
+              .toList();
+
+          if (tasks.isEmpty) {
+            return const Center(child: Text("No tasks yet. Add one!"));
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(8),
+            itemCount: tasks.length,
+            itemBuilder: (context, index) {
+              final task = tasks[index];
+              return TaskTile(task: task);
+            },
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showAddOrEditTaskDialog(context),
+        icon: const Icon(Icons.add),
+        label: const Text("Add Task"),
+      ),
+    );
+  }
 }
 
-class _TasksScreenState extends State<TasksScreen>
-    with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
-  late final Box tasksBox;
-  List<Map<String, dynamic>> tasks = [];
+class TaskTile extends StatefulWidget {
+  final Task task;
+  const TaskTile({super.key, required this.task});
 
   @override
-  void initState() {
-    super.initState();
-    tasksBox = Hive.box('tasksBox');
+  State<TaskTile> createState() => _TaskTileState();
+}
 
-    // ✨ FIX: This section now deeply converts both tasks and their nested subtasks.
-    final rawTasks = tasksBox.get('all_tasks', defaultValue: []) as List;
-    tasks = rawTasks.map((task) {
-      // 1. Convert the parent task
-      final taskMap = Map<String, dynamic>.from(task as Map);
-
-      // 2. If subtasks exist, convert them too
-      if (taskMap['subtasks'] != null) {
-        final rawSubtasks = taskMap['subtasks'] as List;
-        taskMap['subtasks'] = rawSubtasks.map((subtask) {
-          return Map<String, dynamic>.from(subtask as Map);
-        }).toList();
-      }
-      return taskMap;
-    }).toList();
-  }
-
-  // The rest of your code from here is correct and does not need changes.
-  void _showAddOrEditTaskDialog({
-    Map<String, dynamic>? parentTask,
-    Map<String, dynamic>? taskToEdit,
-  }) {
-    final isEditing = taskToEdit != null;
-    final titleController = TextEditingController(
-      text: isEditing ? taskToEdit['title'] : '',
-    );
-
-    String dialogTitle;
-    if (isEditing) {
-      dialogTitle = "Edit Task";
-    } else if (parentTask != null) {
-      dialogTitle = "Add Subtask";
-    } else {
-      dialogTitle = "Add Task";
+class _TaskTileState extends State<TaskTile> {
+  // ... (toggleDone and toggleSubtaskDone methods are unchanged) ...
+  void _toggleDone(bool? value) {
+    widget.task.isDone = value ?? false;
+    if (widget.task.isDone) {
+      widget.task.subtasks?.forEach((sub) => sub.isDone = true);
     }
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(dialogTitle),
-          content: TextField(
-            controller: titleController,
-            decoration: const InputDecoration(labelText: 'Task Title'),
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (titleController.text.isNotEmpty) {
-                  setState(() {
-                    if (isEditing) {
-                      taskToEdit['title'] = titleController.text;
-                    } else if (parentTask != null) {
-                      parentTask['subtasks'].add({
-                        "title": titleController.text,
-                        "done": false,
-                      });
-                    } else {
-                      tasks.add({
-                        "title": titleController.text,
-                        "done": false,
-                        "subtasks": [],
-                        "linkedEvent": null,
-                      });
-                    }
-                    tasksBox.put('all_tasks', tasks);
-                  });
-                  Navigator.pop(context);
-                }
-              },
-              child: const Text("Save"),
-            ),
-          ],
-        );
-      },
-    );
+    widget.task.save();
+    setState(() {});
   }
 
-  void _deleteTask(Map<String, dynamic> task) {
-    setState(() {
-      tasks.remove(task);
-      tasksBox.put('all_tasks', tasks);
-    });
+  void _toggleSubtaskDone(Task subtask, bool? value) {
+    subtask.isDone = value ?? false;
+    if (!subtask.isDone) {
+      widget.task.isDone = false;
+    } else if (widget.task.subtasks?.every((s) => s.isDone) ?? false) {
+      widget.task.isDone = true;
+    }
+    widget.task.save();
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // required with mixin
-
-    return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: tasks.isEmpty
-            ? const Center(child: Text("No tasks yet"))
-            : ListView.builder(
-                itemCount: tasks.length,
-                itemBuilder: (context, index) {
-                  final task = tasks[index];
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      GestureDetector(
-                        onTap: () {},
-                        onDoubleTap: () =>
-                            _showAddOrEditTaskDialog(taskToEdit: task),
-                        behavior: HitTestBehavior.opaque,
-                        child: ListTile(
-                          title: Text(
-                            task['title'],
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              decoration: (task['done'] ?? false)
-                                  ? TextDecoration.lineThrough
-                                  : TextDecoration.none,
-                            ),
-                          ),
-                          leading: Checkbox(
-                            value: task['done'],
-                            onChanged: (val) {
-                              setState(() {
-                                task['done'] = val;
-                                if (task['subtasks'] != null) {
-                                  for (var st in task['subtasks']) {
-                                    st['done'] = val;
-                                  }
-                                }
-                                tasksBox.put('all_tasks', tasks);
-                              });
-                            },
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.add),
-                                onPressed: () =>
-                                    _showAddOrEditTaskDialog(parentTask: task),
-                                tooltip: "Add Subtask",
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete),
-                                onPressed: () => _deleteTask(task),
-                                tooltip: "Delete Task",
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (task['subtasks'] != null &&
-                          task['subtasks'].isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 32.0),
-                          child: Column(
-                            children: List.generate(task['subtasks'].length, (
-                              subIndex,
-                            ) {
-                              final subtask = task['subtasks'][subIndex];
-                              return GestureDetector(
-                                onTap: () {},
-                                onDoubleTap: () => _showAddOrEditTaskDialog(
-                                  taskToEdit: subtask,
-                                ),
-                                behavior: HitTestBehavior.opaque,
-                                child: ListTile(
-                                  title: Text(
-                                    subtask['title'],
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontStyle: FontStyle.italic,
-                                      color: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall?.color,
-                                      decoration: (subtask['done'] ?? false)
-                                          ? TextDecoration.lineThrough
-                                          : TextDecoration.none,
-                                    ),
-                                  ),
-                                  leading: Checkbox(
-                                    value: subtask['done'],
-                                    onChanged: (val) {
-                                      setState(() {
-                                        subtask['done'] = val;
-                                        if (task['subtasks'].every(
-                                          (st) => st['done'] == true,
-                                        )) {
-                                          task['done'] = true;
-                                        } else {
-                                          task['done'] = false;
-                                        }
-                                        tasksBox.put('all_tasks', tasks);
-                                      });
-                                    },
-                                  ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(Icons.delete),
-                                        onPressed: () {
-                                          setState(() {
-                                            task['subtasks'].removeAt(subIndex);
-                                            tasksBox.put('all_tasks', tasks);
-                                          });
-                                        },
-                                        tooltip: "Delete Subtask",
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            }),
-                          ),
-                        ),
-                      const Divider(),
-                    ],
-                  );
-                },
+    // ... (build method is mostly unchanged) ...
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Column(
+        children: [
+          ListTile(
+            leading: Checkbox(
+              value: widget.task.isDone,
+              onChanged: _toggleDone,
+            ),
+            title: Text(
+              widget.task.title,
+              style: TextStyle(
+                decoration: widget.task.isDone
+                    ? TextDecoration.lineThrough
+                    : null,
               ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddOrEditTaskDialog(),
-        icon: const Icon(Icons.add),
-        label: const Text("Add Task"),
-        backgroundColor: Theme.of(context).colorScheme.primary,
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: "Add Subtask",
+                  icon: const Icon(Icons.add_task_outlined),
+                  onPressed: () => _showAddOrEditTaskDialog(
+                    context,
+                    parentTask: widget.task,
+                  ),
+                ),
+                IconButton(
+                  tooltip: "Delete Task",
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () {
+                    final dbService = Provider.of<DatabaseService>(
+                      context,
+                      listen: false,
+                    );
+                    dbService.deleteTask(widget.task);
+                  },
+                ),
+              ],
+            ),
+            onTap: () =>
+                _showAddOrEditTaskDialog(context, taskToEdit: widget.task),
+          ),
+          if (widget.task.subtasks?.isNotEmpty ?? false)
+            Padding(
+              padding: const EdgeInsets.only(
+                left: 48.0,
+                right: 16.0,
+                bottom: 8.0,
+              ),
+              child: Column(
+                children: widget.task.subtasks!.map((subtask) {
+                  return ListTile(
+                    dense: true,
+                    leading: Checkbox(
+                      value: subtask.isDone,
+                      onChanged: (val) => _toggleSubtaskDone(subtask, val),
+                    ),
+                    title: Text(
+                      subtask.title,
+                      style: TextStyle(
+                        decoration: subtask.isDone
+                            ? TextDecoration.lineThrough
+                            : null,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    onTap: () => _showAddOrEditTaskDialog(
+                      context,
+                      taskToEdit: subtask,
+                      parentTask: widget.task,
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+        ],
       ),
     );
   }
+}
+
+void _showAddOrEditTaskDialog(
+  BuildContext context, {
+  Task? parentTask,
+  Task? taskToEdit,
+}) {
+  final dbService = Provider.of<DatabaseService>(context, listen: false);
+  final isEditing = taskToEdit != null;
+  final titleController = TextEditingController(
+    text: isEditing ? taskToEdit.title : '',
+  );
+
+  String title = "Add Task";
+  if (isEditing) title = "Edit Task";
+  if (parentTask != null && !isEditing) title = "Add Subtask";
+
+  showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: titleController,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: "Title"),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            child: const Text("Save"),
+            onPressed: () {
+              final newTitle = titleController.text;
+              if (newTitle.isEmpty) return;
+
+              if (isEditing) {
+                taskToEdit.title = newTitle;
+                parentTask != null ? parentTask.save() : taskToEdit.save();
+              } else if (parentTask != null) {
+                // CORRECTED: Create subtask with parentKey
+                final newSubtask = Task(
+                  title: newTitle,
+                  parentKey: parentTask.key,
+                );
+                parentTask.subtasks ??= HiveList(dbService.tasksBox);
+                parentTask.subtasks!.add(newSubtask);
+                parentTask.save();
+              } else {
+                // CORRECTED: Create top-level task (no parentKey)
+                final newTask = Task(title: newTitle);
+                dbService.addTask(newTask);
+              }
+              Navigator.pop(context);
+            },
+          ),
+        ],
+      );
+    },
+  );
 }
