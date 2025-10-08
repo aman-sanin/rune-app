@@ -1,12 +1,119 @@
+// In lib/pages/tasks.dart
+import 'dart:io';
+import 'package:csv/csv.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 
 import '../models/task.dart';
 import '../services/database_service.dart';
+import 'task_details.dart';
 
-class TasksScreen extends StatelessWidget {
+class TasksScreen extends StatefulWidget {
   const TasksScreen({super.key});
+
+  @override
+  State<TasksScreen> createState() => _TasksScreenState();
+}
+
+class _TasksScreenState extends State<TasksScreen> {
+  // The _importTasksFromCsv and _showAddOptions methods remain unchanged...
+  Future<void> _importTasksFromCsv() async {
+    final dbService = Provider.of<DatabaseService>(context, listen: false);
+
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['csv'],
+    );
+    if (result == null || result.files.single.path == null) return;
+
+    final filePath = result.files.single.path!;
+    final file = File(filePath);
+    final csvString = await file.readAsString();
+    final List<List<dynamic>> rows = const CsvToListConverter().convert(
+      csvString,
+    );
+
+    if (rows.length < 2) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("CSV file is empty or invalid.")),
+        );
+      }
+      return;
+    }
+
+    int successfulImports = 0;
+    int failedImports = 0;
+    Task? currentParentTask;
+
+    for (int i = 1; i < rows.length; i++) {
+      final row = rows[i];
+      try {
+        final parentTitle = row[0].toString();
+        final subtaskTitle = row[1].toString();
+
+        if (parentTitle.isNotEmpty) {
+          final newTask = Task(title: parentTitle);
+          await dbService.addTask(newTask);
+          currentParentTask = dbService.tasksBox.values.last;
+          successfulImports++;
+        } else if (subtaskTitle.isNotEmpty && currentParentTask != null) {
+          final newSubtask = Task(
+            title: subtaskTitle,
+            parentKey: currentParentTask.key,
+          );
+          currentParentTask.subtasks ??= HiveList(dbService.tasksBox);
+          currentParentTask.subtasks!.add(newSubtask);
+          await currentParentTask.save();
+          successfulImports++;
+        } else {
+          failedImports++;
+        }
+      } catch (e) {
+        failedImports++;
+      }
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "Import complete: $successfulImports tasks/subtasks added, $failedImports failed.",
+          ),
+        ),
+      );
+    }
+  }
+
+  void _showAddOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) {
+        return Wrap(
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.add_task),
+              title: const Text('Add a new task'),
+              onTap: () {
+                Navigator.pop(context);
+                showAddTaskDialog(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.upload_file),
+              title: const Text('Import tasks from CSV'),
+              onTap: () {
+                Navigator.pop(context);
+                _importTasksFromCsv();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -16,7 +123,6 @@ class TasksScreen extends StatelessWidget {
       body: ValueListenableBuilder<Box<Task>>(
         valueListenable: dbService.tasksListenable,
         builder: (context, box, _) {
-          // CORRECTED FILTER: A top-level task is one with no parentKey.
           final tasks = box.values
               .where((task) => task.parentKey == null)
               .toList();
@@ -34,15 +140,16 @@ class TasksScreen extends StatelessWidget {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddOrEditTaskDialog(context),
-        icon: const Icon(Icons.add),
-        label: const Text("Add Task"),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showAddOptions(context),
+        tooltip: 'Add Task',
+        child: const Icon(Icons.add),
       ),
     );
   }
 }
 
+// UPDATED: TaskTile is restored to its original, more detailed state
 class TaskTile extends StatefulWidget {
   final Task task;
   const TaskTile({super.key, required this.task});
@@ -52,32 +159,41 @@ class TaskTile extends StatefulWidget {
 }
 
 class _TaskTileState extends State<TaskTile> {
-  // ... (toggleDone and toggleSubtaskDone methods are unchanged) ...
   void _toggleDone(bool? value) {
-    widget.task.isDone = value ?? false;
-    if (widget.task.isDone) {
-      widget.task.subtasks?.forEach((sub) => sub.isDone = true);
-    }
-    widget.task.save();
-    setState(() {});
+    setState(() {
+      widget.task.isDone = value ?? false;
+      if (widget.task.isDone) {
+        for (var sub in (widget.task.subtasks ?? <Task>[])) {
+          sub.isDone = true;
+        }
+      }
+      widget.task.save();
+    });
   }
 
+  // RESTORED: Logic for toggling individual subtasks
   void _toggleSubtaskDone(Task subtask, bool? value) {
-    subtask.isDone = value ?? false;
-    if (!subtask.isDone) {
-      widget.task.isDone = false;
-    } else if (widget.task.subtasks?.every((s) => s.isDone) ?? false) {
-      widget.task.isDone = true;
-    }
-    widget.task.save();
-    setState(() {});
+    setState(() {
+      subtask.isDone = value ?? false;
+      if (!subtask.isDone) {
+        widget.task.isDone = false;
+      } else {
+        // If all subtasks are done, mark the parent as done
+        final allSubtasksDone =
+            widget.task.subtasks?.every((s) => s.isDone) ?? true;
+        if (allSubtasksDone) {
+          widget.task.isDone = true;
+        }
+      }
+      widget.task.save();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    // ... (build method is mostly unchanged) ...
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4.0),
+      // RESTORED: Column layout to show parent task and subtasks
       child: Column(
         children: [
           ListTile(
@@ -93,33 +209,20 @@ class _TaskTileState extends State<TaskTile> {
                     : null,
               ),
             ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  tooltip: "Add Subtask",
-                  icon: const Icon(Icons.add_task_outlined),
-                  onPressed: () => _showAddOrEditTaskDialog(
-                    context,
-                    parentTask: widget.task,
-                  ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      TaskDetailsScreen(taskKey: widget.task.key),
                 ),
-                IconButton(
-                  tooltip: "Delete Task",
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () {
-                    final dbService = Provider.of<DatabaseService>(
-                      context,
-                      listen: false,
-                    );
-                    dbService.deleteTask(widget.task);
-                  },
-                ),
-              ],
-            ),
-            onTap: () =>
-                _showAddOrEditTaskDialog(context, taskToEdit: widget.task),
+              ).then((_) {
+                if (mounted) setState(() {});
+              });
+            },
           ),
+          // RESTORED: Subtask list display
           if (widget.task.subtasks?.isNotEmpty ?? false)
             Padding(
               padding: const EdgeInsets.only(
@@ -144,11 +247,17 @@ class _TaskTileState extends State<TaskTile> {
                         color: Colors.grey.shade600,
                       ),
                     ),
-                    onTap: () => _showAddOrEditTaskDialog(
-                      context,
-                      taskToEdit: subtask,
-                      parentTask: widget.task,
-                    ),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              TaskDetailsScreen(taskKey: subtask.key),
+                        ),
+                      ).then((_) {
+                        if (mounted) setState(() {});
+                      });
+                    },
                   );
                 }).toList(),
               ),
@@ -159,20 +268,10 @@ class _TaskTileState extends State<TaskTile> {
   }
 }
 
-void _showAddOrEditTaskDialog(
-  BuildContext context, {
-  Task? parentTask,
-  Task? taskToEdit,
-}) {
+void showAddTaskDialog(BuildContext context, {Task? parentTask}) {
   final dbService = Provider.of<DatabaseService>(context, listen: false);
-  final isEditing = taskToEdit != null;
-  final titleController = TextEditingController(
-    text: isEditing ? taskToEdit.title : '',
-  );
-
-  String title = "Add Task";
-  if (isEditing) title = "Edit Task";
-  if (parentTask != null && !isEditing) title = "Add Subtask";
+  final titleController = TextEditingController();
+  String title = parentTask != null ? "Add Subtask" : "Add Task";
 
   showDialog(
     context: context,
@@ -194,12 +293,7 @@ void _showAddOrEditTaskDialog(
             onPressed: () {
               final newTitle = titleController.text;
               if (newTitle.isEmpty) return;
-
-              if (isEditing) {
-                taskToEdit.title = newTitle;
-                parentTask != null ? parentTask.save() : taskToEdit.save();
-              } else if (parentTask != null) {
-                // CORRECTED: Create subtask with parentKey
+              if (parentTask != null) {
                 final newSubtask = Task(
                   title: newTitle,
                   parentKey: parentTask.key,
@@ -208,7 +302,6 @@ void _showAddOrEditTaskDialog(
                 parentTask.subtasks!.add(newSubtask);
                 parentTask.save();
               } else {
-                // CORRECTED: Create top-level task (no parentKey)
                 final newTask = Task(title: newTitle);
                 dbService.addTask(newTask);
               }

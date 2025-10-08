@@ -1,5 +1,7 @@
+// In lib/pages/countdown.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 
 import '../models/event.dart';
@@ -11,20 +13,32 @@ class CountdownScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dbService = Provider.of<DatabaseService>(context, listen: false);
-    // This is a simple implementation. For full reactivity, you might
-    // wrap this in a ValueListenableBuilder if countdown status can change.
-    final countdownEvents = dbService.getCountdownEvents();
 
     return Scaffold(
       appBar: AppBar(title: const Text("Countdowns")),
-      body: countdownEvents.isEmpty
-          ? const Center(child: Text("No countdowns are enabled."))
-          : ListView.builder(
-              itemCount: countdownEvents.length,
-              itemBuilder: (context, index) {
-                return CountdownTile(event: countdownEvents[index]);
-              },
-            ),
+      // 1. Wrap the body in a ValueListenableBuilder
+      body: ValueListenableBuilder<Box<Event>>(
+        // 2. Listen to the events box for any changes
+        valueListenable: dbService.eventsListenable,
+        builder: (context, box, _) {
+          // 3. Filter the events INSIDE the builder to get a live list
+          final countdownEvents = box.values
+              .where((event) => event.countdown)
+              .toList();
+
+          if (countdownEvents.isEmpty) {
+            return const Center(child: Text("No countdowns are enabled."));
+          }
+
+          return ListView.builder(
+            itemCount: countdownEvents.length,
+            itemBuilder: (context, index) {
+              // The CountdownTile widget itself doesn't need any changes
+              return CountdownTile(event: countdownEvents[index]);
+            },
+          );
+        },
+      ),
     );
   }
 }

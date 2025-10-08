@@ -1,3 +1,10 @@
+// In lib/pages/calendar.dart
+// ignore: unused_import
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:csv/csv.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
@@ -28,6 +35,90 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   DateTime _normalizeDate(DateTime date) {
     return DateTime.utc(date.year, date.month, date.day);
+  }
+
+  // NEW: Logic to handle CSV file import
+  Future<void> _importEventsFromCsv() async {
+    final dbService = Provider.of<DatabaseService>(context, listen: false);
+
+    // 1. Pick a CSV file
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['csv'],
+    );
+
+    if (result == null || result.files.single.path == null) {
+      // User canceled the picker
+      return;
+    }
+
+    // 2. Read and parse the file
+    final filePath = result.files.single.path!;
+    final file = File(filePath);
+    final csvString = await file.readAsString();
+    final List<List<dynamic>> rows = const CsvToListConverter().convert(
+      csvString,
+    );
+
+    if (rows.length < 2) {
+      // Not enough data (must have header + at least one event)
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("CSV file is empty or invalid.")),
+        );
+      }
+      return;
+    }
+
+    final List<Event> newEvents = [];
+    int successfulImports = 0;
+    int failedImports = 0;
+
+    // 3. Process each row (skip header row at index 0)
+    for (int i = 1; i < rows.length; i++) {
+      final row = rows[i];
+      try {
+        final title = row[0].toString();
+        final description = row[1].toString();
+        // Safely parse date and countdown values
+        final date = DateTime.tryParse(row[2].toString());
+        final countdown = row[3].toString().toLowerCase() == 'true';
+
+        if (title.isNotEmpty && date != null) {
+          newEvents.add(
+            Event(
+              title: title,
+              description: description,
+              date: date,
+              countdown: countdown,
+            ),
+          );
+          successfulImports++;
+        } else {
+          failedImports++;
+        }
+      } catch (e) {
+        failedImports++;
+        // Continue to the next row even if one fails
+      }
+    }
+
+    // 4. Add all valid events to the database
+    if (newEvents.isNotEmpty) {
+      await dbService.addMultipleEvents(newEvents);
+    }
+
+    // 5. Show a summary message
+    if (mounted) {
+      Navigator.pop(context); // Close the bottom sheet first
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "Import complete: $successfulImports successful, $failedImports failed.",
+          ),
+        ),
+      );
+    }
   }
 
   void _showAddEventDialog(BuildContext context) {
@@ -107,17 +198,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       child: const Text("Save Event"),
                       onPressed: () {
                         if (titleController.text.isEmpty) return;
-
                         final newEvent = Event(
                           title: titleController.text,
                           description: descController.text,
                           date: selectedDate,
                           countdown: isCountdown,
                         );
-
                         dbService.addEvent(newEvent);
                         Navigator.pop(context); // Close the bottom sheet
                       },
+                    ),
+                    // NEW: Import button
+                    const Divider(height: 30),
+                    TextButton.icon(
+                      icon: const Icon(Icons.upload_file_outlined),
+                      label: const Text("Import from CSV"),
+                      onPressed: _importEventsFromCsv,
                     ),
                   ],
                 ),
@@ -129,12 +225,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // In lib/pages/calendar.dart
-
-  // In lib/pages/calendar.dart
-
   @override
   Widget build(BuildContext context) {
+    // The rest of the build method is unchanged
     final dbService = Provider.of<DatabaseService>(context, listen: false);
 
     return Scaffold(
@@ -147,15 +240,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
             (Event e) => _normalizeDate(e.date),
           );
 
-          // Use OrientationBuilder to return a different layout based on rotation
           return OrientationBuilder(
             builder: (context, orientation) {
               if (orientation == Orientation.landscape) {
-                // --- LANDSCAPE LAYOUT (Original Style) ---
                 return Row(
                   children: [
                     Expanded(
-                      // 3. Flex values restored to your original preference
                       flex: 3,
                       child: TableCalendar<Event>(
                         firstDay: DateTime.utc(2020),
@@ -171,9 +261,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         },
                         eventLoader: (day) =>
                             eventsByDate[_normalizeDate(day)] ?? [],
-                        // 1. Calendar is now fixed to week view in landscape
                         calendarFormat: CalendarFormat.week,
-                        // 2. Format button is hidden in landscape
                         headerStyle: const HeaderStyle(
                           formatButtonVisible: false,
                           titleCentered: true,
@@ -191,7 +279,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   ],
                 );
               } else {
-                // --- PORTRAIT LAYOUT ---
                 return Column(
                   children: [
                     TableCalendar<Event>(

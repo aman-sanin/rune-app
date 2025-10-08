@@ -1,3 +1,4 @@
+// In lib/services/database_service.dart
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/event.dart';
@@ -24,6 +25,11 @@ class DatabaseService {
   Future<void> addEvent(Event event) async {
     // Use .add() to let Hive generate a unique, auto-incrementing key.
     await _eventsBox.add(event);
+  }
+
+  Future<void> addMultipleEvents(List<Event> events) async {
+    // .addAll() is an efficient way to add multiple entries at once.
+    await _eventsBox.addAll(events);
   }
 
   Event? getEvent(dynamic key) {

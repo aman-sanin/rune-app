@@ -1,8 +1,12 @@
+// In lib/theme.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 final lightTheme = ThemeData(
+  // ADD THIS LINE: Sets the default font for the entire theme.
+  fontFamily: 'Orbitron',
   brightness: Brightness.light,
+  // This correctly styles specific text types (like headlines, subtitles, etc.)
   textTheme: GoogleFonts.orbitronTextTheme(ThemeData.light().textTheme),
   colorScheme: const ColorScheme.light(
     primary: Color.fromARGB(255, 38, 64, 189),
@@ -36,7 +40,10 @@ final lightTheme = ThemeData(
 );
 
 final darkTheme = ThemeData(
+  // ADD THIS LINE: Sets the default font for the entire theme.
+  fontFamily: 'Orbitron',
   brightness: Brightness.dark,
+  // This correctly styles specific text types (like headlines, subtitles, etc.)
   textTheme: GoogleFonts.orbitronTextTheme(ThemeData.dark().textTheme),
   colorScheme: const ColorScheme.dark(
     primary: Color(0xFF4FC3F7),
